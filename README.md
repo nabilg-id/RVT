@@ -9,6 +9,8 @@ _Extract direct MP4, MP3, and image links from YouTube and more platforms — bu
 [![node version](https://img.shields.io/badge/node-%3E%3D%2016.x-61afef.svg?style=flat-square)](https://nodejs.org)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
+> 🔒 **INTERNAL USE ONLY** — This tool is proprietary and intended solely for Ridikc's internal R&D team. Do not distribute outside the organization.
+
 </div>
 
 ---
