@@ -113,6 +113,18 @@ URL ditampilkan ringkas. Untuk URL lengkap:
 rch video https://youtu.be/ID_VIDEO 720p --full
 ```
 
+### Download file video/audio langsung ke disk
+```bash
+rch download https://youtu.be/ID_VIDEO 720p mp4
+rch download https://youtu.be/ID_VIDEO mp3
+```
+- `[kualitas]` opsional: `360p`, `480p`, `720p`, `1080p` (default `720p`).
+- `[format]` opsional: `mp4` (default) atau `mp3`.
+- Untuk tentukan folder tujuan:
+```bash
+rch download https://youtu.be/ID_VIDEO 720p mp4 --out ./hasil
+```
+
 ---
 
 ## 4. Lokasi Hasil
@@ -155,5 +167,6 @@ ZIP: downloads/channel-.../channel-thumbnails-hqdefault.zip (74.32 MB)
 | `rch` tidak dikenali | Jalankan installer ulang, atau pakai `node bin/rch.js` |
 | `install.sh` tidak bisa dijalankan (Mac/Linux) | `chmod +x install.sh` lalu `./install.sh` |
 | `rch channel` gagal "yt-dlp not found" | Install yt-dlp (`winget install yt-dlp.yt-dlp` / `brew install yt-dlp`) |
+| `rch download`/`rch video` gagal 403 | Update yt-dlp: `yt-dlp -U` |
 | Beberapa thumbnail gagal (404) | Video dihapus/private. Coba ukuran `hqdefault` |
 | `rch video` gagal | Pastikan yt-dlp terpasang & terupdate (`yt-dlp -U`) |

@@ -43,6 +43,8 @@ rch thumbnail https://youtu.be/ID maxresdefault              # download satu thu
 rch list daftar.txt hqdefault                                # dari daftar file
 rch info https://youtu.be/ID                                  # info video
 rch video https://youtu.be/ID 720p                            # resolve link MP4
+rch download https://youtu.be/ID 720p mp4                     # download video ke disk
+rch download https://youtu.be/ID mp3                          # download audio ke disk
 ```
 
 > Panduan lengkap tim: lihat [`docs/PENGGUNAAN.md`](docs/PENGGUNAAN.md) · Cara kerja internal: [`docs/CARA_KERJA.md`](docs/CARA_KERJA.md)
