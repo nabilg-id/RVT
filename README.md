@@ -24,6 +24,29 @@ _Extract direct MP4, MP3, and image links from YouTube and more platforms — bu
 
 ## 📦 Installation
 
+### Untuk tim (tanpa menulis kode) — CLI
+
+```bash
+git clone https://github.com/nabilg-id/Ridikc-Content-Harvester-RCH-.git
+cd Ridikc-Content-Harvester-RCH-
+npm install
+npm link
+```
+
+Lalu gunakan perintah `rch`:
+
+```bash
+rch channel https://www.youtube.com/@namachannel hqdefault   # download semua thumbnail → ZIP
+rch thumbnail https://youtu.be/ID maxresdefault              # download satu thumbnail
+rch list daftar.txt hqdefault                                # dari daftar file
+rch info https://youtu.be/ID                                  # info video
+rch video https://youtu.be/ID 720p                            # resolve link MP4
+```
+
+> Panduan lengkap tim: lihat [`docs/PENGGUNAAN.md`](docs/PENGGUNAAN.md) · Cara kerja internal: [`docs/CARA_KERJA.md`](docs/CARA_KERJA.md)
+
+### Sebagai library (untuk developer)
+
 ```bash
 npm install ridikc-content-harvester
 ```
