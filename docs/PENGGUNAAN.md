@@ -26,7 +26,22 @@ Atau unduh manual: https://github.com/yt-dlp/yt-dlp/releases
 
 ## 2. Install RCH
 
-### Cara A — Dari repo (rekomendasi internal)
+### Cara A — Installer satu-klik (paling simpel untuk tim)
+
+**Windows** — klik ganda `install.bat`, atau dari cmd:
+```bash
+install.bat
+```
+
+**macOS / Linux** — dari Terminal:
+```bash
+./install.sh
+```
+(Jika gagal karena permission: `chmod +x install.sh` lalu jalankan lagi.)
+
+Installer otomatis: cek Node.js → `npm install` → install yt-dlp (opsional) → `npm link` agar perintah `rch` tersedia global.
+
+### Cara B — Manual (dari repo)
 
 ```bash
 git clone https://github.com/nabilg-id/Ridikc-Content-Harvester-RCH-.git
@@ -35,9 +50,7 @@ npm install
 npm link
 ```
 
-Setelah `npm link`, perintah `rch` tersedia global di semua terminal.
-
-### Cara B — Tanpa `npm link` (langsung dari folder)
+### Cara C — Tanpa `npm link` (langsung dari folder)
 
 Setiap perintah cukup diawali `node bin/rch.js`:
 ```bash
@@ -47,6 +60,14 @@ node bin/rch.js channel https://www.youtube.com/@namachannel
 ---
 
 ## 3. Perintah Sehari-hari
+
+Setiap perintah punya bantuan detail:
+```bash
+rch channel --help
+rch list --help
+rch video --help
+# dst.
+```
 
 ### `rch help`
 Tampilkan semua perintah.
@@ -86,6 +107,10 @@ Menampilkan judul + semua ukuran thumbnail.
 ### Resolve link download MP4
 ```bash
 rch video https://youtu.be/ID_VIDEO 720p
+```
+URL ditampilkan ringkas. Untuk URL lengkap:
+```bash
+rch video https://youtu.be/ID_VIDEO 720p --full
 ```
 
 ---
@@ -127,7 +152,8 @@ ZIP: downloads/channel-.../channel-thumbnails-hqdefault.zip (74.32 MB)
 
 | Masalah | Solusi |
 | --- | --- |
-| `rch` tidak dikenali | Jalankan `npm link` ulang, atau pakai `node bin/rch.js` |
-| `rch channel` gagal "yt-dlp not found" | Install yt-dlp (`winget install yt-dlp.yt-dlp`) |
+| `rch` tidak dikenali | Jalankan installer ulang, atau pakai `node bin/rch.js` |
+| `install.sh` tidak bisa dijalankan (Mac/Linux) | `chmod +x install.sh` lalu `./install.sh` |
+| `rch channel` gagal "yt-dlp not found" | Install yt-dlp (`winget install yt-dlp.yt-dlp` / `brew install yt-dlp`) |
 | Beberapa thumbnail gagal (404) | Video dihapus/private. Coba ukuran `hqdefault` |
 | `rch video` gagal | Pastikan yt-dlp terpasang & terupdate (`yt-dlp -U`) |
