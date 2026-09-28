@@ -125,6 +125,22 @@ rch download https://youtu.be/ID_VIDEO mp3
 rch download https://youtu.be/ID_VIDEO 720p mp4 --out ./hasil
 ```
 
+### Download LENGKAP semua video dari channel → 1 ZIP
+```bash
+rch channel-full https://www.youtube.com/@namachannel hqdefault
+```
+Mendownload semua video channel dan mengemas ke **1 file ZIP**. Setiap video berisi:
+- `video.mp4` (kualitas terbaik)
+- `thumbnail.jpg`
+- `deskripsi.txt` (deskripsi dari YouTube)
+- `link.txt` (URL `https://youtu.be/<ID>`)
+
+```bash
+rch channel-full https://www.youtube.com/@namachannel maxresdefault --out ./hasil
+```
+
+> ⚠️ Video diambil pada **kualitas terbaik**, jadi total ukuran ZIP bisa sangat besar (ratusan MB hingga GB) untuk channel dengan banyak video.
+
 ---
 
 ## 4. Lokasi Hasil
