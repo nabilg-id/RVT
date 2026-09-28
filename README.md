@@ -154,6 +154,30 @@ Resolve direct MP4/MP3 download links via `yt-dlp`, returning multiple video qua
 ### `youtube.playlist(url)`
 Extract playlist metadata and items from a YouTube playlist URL.
 
+### `youtube.channelFull(url, options?)`
+Download full channel (video + thumbnail + description + link) into one ZIP.
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `size` | `string` | `"hqdefault"` | Thumbnail size |
+| `outputDir` | `string` | `"./downloads"` | Destination directory |
+| `concurrency` | `number` | `3` | Parallel workers |
+| `limit` | `number` | none | Limit number of videos |
+| `zipName` | `string` | auto | Output ZIP name |
+
+### `youtube.channelInfo(url, options?)`
+Same as `channelFull` but without downloading video files (metadata only). Accepts the same options.
+
+---
+
+## 🧪 Testing
+
+```bash
+npm run test:unit    # unit tests (zip, metadata, channelFull)
+npm run test:smoke   # smoke test (live YouTube calls)
+npm test             # run unit tests only
+```
+
 ---
 
 ## ⚠️ Disclaimer
