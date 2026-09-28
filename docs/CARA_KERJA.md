@@ -65,6 +65,17 @@ Karena yt-dlp membaca struktur halaman YouTube (bukan API resmi yang stabil), yt
 yt-dlp -U
 ```
 
+### Auto-update yt-dlp
+
+RCH sudah menangani ini otomatis di beberapa lapis:
+
+1. **Saat runtime** — setiap kali memakai fitur yang butuh yt-dlp (channel, download, resolve link), RCH otomatis memanggil `yt-dlp -U` sekali per proses (lewat `ensureYtDlpUpdated()` di `lib/youtube/metadata.js`). Jadi yt-dlp selalu diperbarui tanpa campur tangan tim.
+2. **Saat install** — `install.bat` (Windows) dan `install.sh` (macOS/Linux) akan:
+   - Meng-install yt-dlp jika belum ada (`winget` / `brew`).
+   - Memperbarui yt-dlp ke versi terbaru jika sudah ada (`yt-dlp -U`).
+
+Dengan ini, tim tidak perlu mengingat untuk menjalankan `yt-dlp -U` secara manual.
+
 ---
 
 ## 2. Struktur Direktori
