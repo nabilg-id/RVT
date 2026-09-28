@@ -20,6 +20,53 @@ Ridikc Content Harvester adalah **library Node.js (CommonJS, murni JavaScript, t
 
 ---
 
+## 1.1 Sumber Data & Peran yt-dlp
+
+Sistem ini **TIDAK memakai API resmi YouTube (Data API v3)**. Hampir semua data diambil lewat **`yt-dlp`** (CLI eksternal) yang membaca struktur halaman video YouTube secara langsung.
+
+### Mengapa yt-dlp, bukan API resmi?
+
+| Perbandingan | API resmi (Data API v3) | yt-dlp |
+| --- | --- | --- |
+| Butuh API key | Ya | Tidak |
+| Ada quota harian | Ya (10.000 unit/hari) | Tidak |
+| Biaya | Berbayar untuk skala besar | Gratis |
+| Ambil deskripsi massal | Makan banyak quota | Gratis, tanpa batas |
+| Download file video | Tidak menyediakan | Bisa |
+
+### Sumber data per fitur
+
+| Data | Sumber | Lewat yt-dlp? | Butuh API key? |
+| --- | --- | --- | --- |
+| **Deskripsi** | baca halaman video YouTube | Ya | Tidak |
+| **Judul** | yt-dlp → fallback oEmbed → fallback `<title>` halaman | Ya (utama) | Tidak |
+| **Daftar video channel** | `--flat-playlist` | Ya | Tidak |
+| **Link video** | konstruksi `youtu.be/<ID>` | Tidak | Tidak |
+| **Thumbnail** | CDN `i.ytimg.com/vi/<ID>/<size>.jpg` | Tidak | Tidak |
+| **File video/audio** | resolve format + download | Ya | Tidak |
+
+### Alur teknis pengambilan deskripsi
+
+File: `lib/youtube/metadata.js` → `getVideoInfoBatch()`
+
+```
+getVideoInfoBatch(ids)
+   └─ yt-dlp --skip-download --print %(id)s --print %(title)s --print %(description)s <url...>
+        └─ yt-dlp membuka halaman tiap video YouTube
+        └─ membaca field "description" dari struktur data halaman (ytInitialData)
+        └─ kita tangkap lewat --print, pisahkan per video dengan delimiter
+```
+
+### Titik rawan utama
+
+Karena yt-dlp membaca struktur halaman YouTube (bukan API resmi yang stabil), yt-dlp **bisa berhenti bekerja jika YouTube mengubah struktur halamannya**. Solusinya: update yt-dlp secara berkala.
+
+```bash
+yt-dlp -U
+```
+
+---
+
 ## 2. Struktur Direktori
 
 ```
