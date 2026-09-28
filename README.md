@@ -46,6 +46,7 @@ rch video https://youtu.be/ID 720p                            # resolve link MP4
 rch download https://youtu.be/ID 720p mp4                     # download video ke disk
 rch download https://youtu.be/ID mp3                          # download audio ke disk
 rch channel-full https://www.youtube.com/@namachannel hqdefault   # semua video → 1 ZIP
+rch channel-info https://www.youtube.com/@namachannel hqdefault   # metadata (tanpa video) → 1 ZIP
 ```
 
 > Panduan lengkap tim: lihat [`docs/PENGGUNAAN.md`](docs/PENGGUNAAN.md) · Cara kerja internal: [`docs/CARA_KERJA.md`](docs/CARA_KERJA.md)

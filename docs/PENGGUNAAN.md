@@ -141,6 +141,21 @@ rch channel-full https://www.youtube.com/@namachannel maxresdefault --out ./hasi
 
 > ⚠️ Video diambil pada **kualitas terbaik**, jadi total ukuran ZIP bisa sangat besar (ratusan MB hingga GB) untuk channel dengan banyak video.
 
+### Download metadata channel TANPA video → 1 ZIP
+```bash
+rch channel-info https://www.youtube.com/@namachannel hqdefault
+```
+Sama seperti `channel-full` tapi **tidak mengunduh video** (ringan & cepat). Setiap video berisi:
+- `thumbnail.jpg`
+- `deskripsi.txt`
+- `link.txt`
+
+Cocok untuk mendapatkan link, thumbnail, dan deskripsi secara massal. Video bisa diunduh terpisah kapan saja pakai `rch download`.
+
+```bash
+rch channel-info https://www.youtube.com/@namachannel --out ./hasil
+```
+
 ---
 
 ## 4. Lokasi Hasil
