@@ -156,6 +156,13 @@ Cocok untuk mendapatkan link, thumbnail, dan deskripsi secara massal. Video bisa
 rch channel-info https://www.youtube.com/@namachannel --out ./hasil
 ```
 
+> ℹ️ Video yang **unavailable/private/unlisted** akan otomatis diberi nama folder `unavailable-<ID>` dengan deskripsi berisi keterangan, dan jumlahnya ditampilkan di ringkasan akhir sebagai "Video tidak tersedia".
+
+> 🔧 Untuk testing cepat atau membatasi jumlah video, tambahkan flag `--limit`:
+> ```bash
+> rch channel-info https://www.youtube.com/@namachannel --limit 10
+> ```
+
 ---
 
 ## 4. Lokasi Hasil
