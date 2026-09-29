@@ -208,3 +208,30 @@ ZIP: downloads/channel-.../channel-thumbnails-hqdefault.zip (74.32 MB)
 | `rch download`/`rch video` gagal 403 | Update yt-dlp: `yt-dlp -U` |
 | Beberapa thumbnail gagal (404) | Video dihapus/private. Coba ukuran `hqdefault` |
 | `rch video` gagal | Pastikan yt-dlp terpasang & terupdate (`yt-dlp -U`) |
+
+---
+
+## 7. Merilis Versi Baru (untuk maintainer)
+
+RCH pakai **Semantic Versioning** (MAJOR.MINOR.PATCH) dan **auto-release via GitHub Actions**.
+
+Cara rilis:
+
+1. Naikkan `version` di `package.json` sesuai aturan SemVer.
+2. Commit + tag + push:
+
+```bash
+git add -A
+git commit -m "feat: deskripsi perubahan" -m "Co-authored-by: Claude <noreply@anthropic.com>"
+git tag -a v1.2.0 -m "v1.2.0 — Deskripsi singkat"
+git push && git push --tags
+```
+
+3. GitHub Actions otomatis:
+   - Menjalankan unit test.
+   - Jika lulus, membuat **GitHub Release** dengan changelog otomatis.
+
+Aturan SemVer:
+- **MAJOR** — perubahan yang tidak kompatibel (breaking).
+- **MINOR** — fitur baru, tetap kompatibel.
+- **PATCH** — perbaikan bug.
