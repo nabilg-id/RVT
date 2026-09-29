@@ -2,9 +2,9 @@
 
 # Ridikc Content Harvester
 
-**Universal Social Media & Streaming Downloader for Node.js.**
+**YouTube Downloader & Media Harvester for Node.js.**
 
-_Extract direct MP4, MP3, and image links from YouTube and more platforms — built for internal R&D use by Ridikc._
+_Extract direct MP4, MP3, thumbnail, and metadata links from YouTube — built for internal R&D use by Ridikc._
 
 [![node version](https://img.shields.io/badge/node-%3E%3D%2016.x-61afef.svg?style=flat-square)](https://nodejs.org)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
@@ -17,10 +17,11 @@ _Extract direct MP4, MP3, and image links from YouTube and more platforms — bu
 
 ## ✨ Features
 
-- 🎬 **YouTube** — resolve MP4 / MP3 download links via multiple providers.
-- 🖼️ **YouTube Thumbnails** — resolve every thumbnail size (default → maxresdefault) and download them to disk in bulk.
-- 📃 **YouTube Playlists** — extract full playlist metadata and item list.
-- 🧩 **Extensible multi-platform** architecture (add TikTok, Instagram, etc. by dropping a module into `lib/`).
+- 🎬 **YouTube Video** — resolve MP4 / MP3 download links and download files to disk.
+- 🖼️ **YouTube Thumbnails** — resolve every thumbnail size (default → maxresdefault) and download them in bulk.
+- 📝 **YouTube Metadata** — extract title, description, and link for videos & channels.
+- 📦 **Channel Harvester** — download all thumbnails / metadata / videos from a channel into a single ZIP.
+- 🧩 **Anti-bot & rate-limit mitigation** — retries, sleep, User-Agent, proxy, and cookies support.
 
 ---
 
