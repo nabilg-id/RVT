@@ -176,6 +176,47 @@ rch channel-video https://www.youtube.com/@namachannel --limit 20
 - `[--quality]`: `360p`, `480p`, `720p` (default), `1080p`, `best`
 - Nama folder memakai judul video (duplikat otomatis diberi suffix ID).
 
+## 3a. Opsi Lanjutan (semua perintah channel)
+
+Flag berikut berlaku untuk `channel`, `channel-info`, `channel-full`, dan `channel-video`:
+
+| Flag | Keterangan |
+| --- | --- |
+| `--limit N` | Batasi jumlah video |
+| `--out <folder>` | Folder tujuan |
+| `--concurrency N` | Jumlah download paralel (default 2) |
+| `--min-duration <detik>` | Hanya video dengan durasi ≥ N detik |
+| `--max-duration <detik>` | Hanya video dengan durasi ≤ N detik |
+| `--after <YYYY-MM-DD>` | Hanya video yang diunggah setelah tanggal |
+| `--shorts` | Ambil Shorts (dari tab `/shorts`) |
+| `--subtitles` | Unduh subtitle (bersama video) |
+| `--sub-lang <kode>` | Bahasa subtitle (default `all`) |
+| `--resume` | Lewati video yang sudah terdownload |
+| `--csv <file>` | Export metadata ke CSV |
+| `--json <file>` | Export metadata ke JSON |
+| `--cookies <browser>` | Cookie browser untuk video unlisted/private |
+
+Contoh:
+```bash
+rch channel-video https://www.youtube.com/@namachannel --min-duration 60 --max-duration 600
+rch channel-full https://www.youtube.com/@namachannel --after 2026-01-01 --subtitles
+rch channel-info https://www.youtube.com/@namachannel --csv hasil.csv --json hasil.json
+rch channel-video https://www.youtube.com/@namachannel --resume
+```
+
+### Config preset (`.rchrc.json`)
+
+Simpan default di file `.rchrc.json` (folder kerja atau home):
+```json
+{
+  "quality": "720p",
+  "concurrency": 2,
+  "cookies": "chrome",
+  "proxy": "http://127.0.0.1:8080"
+}
+```
+Prioritas: flag CLI > env var > `.rchrc.json` > default.
+
 ---
 
 ## 4. Lokasi Hasil
