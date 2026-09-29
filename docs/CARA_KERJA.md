@@ -78,6 +78,53 @@ Dengan ini, tim tidak perlu mengingat untuk menjalankan `yt-dlp -U` secara manua
 
 ---
 
+## 1.2 Mitigasi Anti-Bot & Rate-Limit
+
+Untuk mengurangi risiko blokir IP / HTTP 429 / terdeteksi bot saat memakai yt-dlp, RCH menyisipkan flag mitigasi otomatis ke setiap panggilan yt-dlp (lewat `lib/core/config.js`).
+
+### Flag yang otomatis dipakai
+
+| Flag yt-dlp | Nilai default | Tujuan |
+| --- | --- | --- |
+| `--retries` | 3 | Ulangi otomatis saat error sesaat |
+| `--extractor-retries` | 3 | Ulangi ekstraksi metadata |
+| `--fragment-retries` | 3 | Ulangi fragmen download |
+| `--sleep-requests` | 0.5 | Jeda antar request (detik) |
+| `--sleep-interval` | 0.5 | Jeda antar download |
+| `--max-sleep-interval` | 2 | Batas atas jeda acak |
+| `--user-agent` | UA Chrome | Samarkan sebagai browser asli |
+
+Selain itu, panggilan `axios` (thumbnail & fallback metadata) punya **retry dengan exponential backoff** saat kena 429/5xx (lewat `lib/core/http.js`).
+
+### Konfigurasi lewat environment variable
+
+Semua nilai bisa di-override tanpa ubah kode:
+
+| Env var | Default | Keterangan |
+| --- | --- | --- |
+| `RCH_SLEEP_REQUESTS` | 0.5 | Jeda antar request (detik) |
+| `RCH_SLEEP_INTERVAL` | 0.5 | Jeda antar download |
+| `RCH_MAX_SLEEP_INTERVAL` | 2 | Batas atas jeda acak |
+| `RCH_RETRIES` | 3 | Jumlah percobaan ulang |
+| `RCH_USER_AGENT` | UA Chrome | User-Agent kustom |
+| `RCH_PROXY` | (kosong) | Proxy (mis. `http://127.0.0.1:8080`) |
+| `RCH_COOKIES` | (kosong) | Browser sumber cookie (`chrome`/`firefox`/`edge`) |
+| `RCH_LIMIT_RATE` | (kosong) | Batas kecepatan (mis. `2M`) |
+
+### Cookies browser (opsional)
+
+Flag CLI `--cookies <browser>` (atau env `RCH_COOKIES`) memakai cookie browser untuk:
+- Mengurangi deteksi bot.
+- Mengakses video **unlisted/private** yang tidak bisa diambil tanpa login.
+
+```bash
+rch channel-info https://www.youtube.com/@namachannel --cookies chrome
+```
+
+> Catatan: `--cookies-from-browser` butuh browser yang sudah login YouTube di mesin yang sama.
+
+---
+
 ## 2. Struktur Direktori
 
 ```
