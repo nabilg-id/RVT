@@ -163,6 +163,19 @@ rch channel-info https://www.youtube.com/@namachannel --out ./hasil
 > rch channel-info https://www.youtube.com/@namachannel --limit 10
 > ```
 
+### Download SEMUA video channel saja → 1 ZIP
+```bash
+rch channel-video https://www.youtube.com/@namachannel
+```
+Mendownload **hanya file video** (video.mp4) dari semua video channel, dikemas ke 1 ZIP. Tidak menyertakan thumbnail/deskripsi/link.
+
+```bash
+rch channel-video https://www.youtube.com/@namachannel --quality 1080p
+rch channel-video https://www.youtube.com/@namachannel --limit 20
+```
+- `[--quality]`: `360p`, `480p`, `720p` (default), `1080p`, `best`
+- Nama folder memakai judul video (duplikat otomatis diberi suffix ID).
+
 ---
 
 ## 4. Lokasi Hasil
