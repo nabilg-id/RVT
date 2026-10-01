@@ -1,20 +1,14 @@
-# Dependencies
-node_modules/
-
-# Test output / downloads
-test/downloads/
-downloads/
-
-# Logs
-*.log
-npm-debug.log*
-
-# OS / editor
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-
-# Env
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
 .env
-.env.*
+downloads/
+node_modules/
+coverage/
+.coverage
+.pytest_cache/
+htmlcov/
+.rch-checkpoint.json

@@ -2,27 +2,38 @@
 
 Dokumen ini menjelaskan arsitektur, alur kerja, dan cara pengujian **Ridikc Content Harvester** untuk tim R&D.
 
+> Implementasi Node.js yang lama tersimpan read-only di `legacy-node/` sebagai referensi historis.
+> Dokumen ini menjelaskan versi Python yang aktif.
+
 ---
 
 ## 1. Ringkasan
 
-Ridikc Content Harvester adalah **library Node.js (CommonJS, murni JavaScript, tanpa framework)** untuk mengekstrak link download media dan thumbnail dari YouTube. Arsitekturnya **extensible multi-platform** (meniru pola `scrapr`), sehingga platform lain (TikTok, Instagram, dll.) tinggal ditambahkan sebagai modul di `lib/`.
+Ridikc Content Harvester adalah **alat Python 3.10+** untuk mengunduh media dan
+thumbnail dari YouTube. Modular per fitur (`rch/youtube/`), dengan lapisan
+inti yang tidak bergantung pada jaringan sehingga seluruh test bisa
+berjalan offline.
 
 ### Teknologi
 
 | Komponen | Keterangan |
 | --- | --- |
-| Runtime | Node.js ≥ 16 |
-| HTTP client | `axios` |
-| HTML parsing | `cheerio` (opsional, fallback provider) |
+| Runtime | Python ≥ 3.10 |
+| CLI | `click` |
+| HTTP client | `requests` (`rch/core/http.py`) |
+| HTML parsing | `beautifulsoup4` (playlist, fallback metadata) |
 | Backend video/audio | `yt-dlp` (CLI lokal, direkomendasikan) |
-| ZIP | implementasi murni Node (`lib/core/zip.js`), tanpa dependensi |
+| GUI | `flask` (server lokal, dibuka di browser) |
+| ZIP | `zipfile` (standar library) |
+| Test | `pytest` + `pytest-cov` |
 
 ---
 
 ## 1.1 Sumber Data & Peran yt-dlp
 
-Sistem ini **TIDAK memakai API resmi YouTube (Data API v3)**. Hampir semua data diambil lewat **`yt-dlp`** (CLI eksternal) yang membaca struktur halaman video YouTube secara langsung.
+Sistem ini **TIDAK memakai API resmi YouTube (Data API v3)**. Sebagian besar
+data diambil lewat **`yt-dlp`** (CLI eksternal) yang membaca struktur halaman
+video YouTube secara langsung.
 
 ### Mengapa yt-dlp, bukan API resmi?
 
@@ -38,78 +49,94 @@ Sistem ini **TIDAK memakai API resmi YouTube (Data API v3)**. Hampir semua data 
 
 | Data | Sumber | Lewat yt-dlp? | Butuh API key? |
 | --- | --- | --- | --- |
-| **Deskripsi** | baca halaman video YouTube | Ya | Tidak |
-| **Judul** | yt-dlp → fallback oEmbed → fallback `<title>` halaman | Ya (utama) | Tidak |
+| **Judul & durasi** | `yt-dlp --dump-single-json` | Ya | Tidak |
+| **Deskripsi** | fallback: scrape halaman video | Sebagian | Tidak |
 | **Daftar video channel** | `--flat-playlist` | Ya | Tidak |
 | **Link video** | konstruksi `youtu.be/<ID>` | Tidak | Tidak |
 | **Thumbnail** | CDN `i.ytimg.com/vi/<ID>/<size>.jpg` | Tidak | Tidak |
 | **File video/audio** | resolve format + download | Ya | Tidak |
 
-### Alur teknis pengambilan deskripsi
+### Alur teknis pengambilan metadata
 
-File: `lib/youtube/metadata.js` → `getVideoInfoBatch()`
+File: `rch/youtube/metadata.py` → `get_video_info_batch()`
 
 ```
-getVideoInfoBatch(ids)
-   └─ yt-dlp --skip-download --print %(id)s --print %(title)s --print %(description)s <url...>
+get_video_info_batch(ids, run_ytdlp=...)
+   └─ yt-dlp --dump-single-json --no-playlist <url...>
         └─ yt-dlp membuka halaman tiap video YouTube
-        └─ membaca field "description" dari struktur data halaman (ytInitialData)
-        └─ kita tangkap lewat --print, pisahkan per video dengan delimiter
+        └─ field diambil per video, dipisah delimiter
+        └─ parse_batch_output() → [{id, title, duration}, ...]
 ```
+
+Karena data dikembalikan per-batch, request dipecah menjadi potongan
+(`_chunked`) agar output yt-dlp tidak membengkak. Bila yt-dlp gagal,
+`get_video_info_fallback()` memproses halaman HTML secara langsung
+(oEmbed → `<title>`).
 
 ### Titik rawan utama
 
-Karena yt-dlp membaca struktur halaman YouTube (bukan API resmi yang stabil), yt-dlp **bisa berhenti bekerja jika YouTube mengubah struktur halamannya**. Solusinya: update yt-dlp secara berkala.
+Karena yt-dlp membaca struktur halaman YouTube (bukan API resmi yang stabil),
+yt-dlp **bisa berhenti bekerja jika YouTube mengubah struktur halamannya**.
+Solusinya: perbarui yt-dlp secara berkala.
 
 ```bash
-yt-dlp -U
+python -m pip install --upgrade yt-dlp
 ```
 
 ### Auto-update yt-dlp
 
-RCH sudah menangani ini otomatis di beberapa lapis:
+RCH menangani ini otomatis di dua lapis:
 
-1. **Saat runtime** — setiap kali memakai fitur yang butuh yt-dlp (channel, download, resolve link), RCH otomatis memanggil `yt-dlp -U` sekali per proses (lewat `ensureYtDlpUpdated()` di `lib/youtube/metadata.js`). Jadi yt-dlp selalu diperbarui tanpa campur tangan tim.
-2. **Saat install** — `install.bat` (Windows) dan `install.sh` (macOS/Linux) akan:
-   - Meng-install yt-dlp jika belum ada (`winget` / `brew`).
-   - Memperbarui yt-dlp ke versi terbaru jika sudah ada (`yt-dlp -U`).
-
-Dengan ini, tim tidak perlu mengingat untuk menjalankan `yt-dlp -U` secara manual.
+1. **Saat runtime** — fitur yang butuh yt-dlp memanggil `ensure_ytdlp_updated()`
+   (`rch/youtube/metadata.py`) yang menjalankan `yt-dlp -U` sekali per proses.
+   Kegagalan update ditoleransi (di-`try/except`) agar download tetap berjalan.
+2. **Saat install** — `setup-gui.bat` (Windows) dan `setup-gui.sh` (macOS/Linux)
+   memasang `yt-dlp` terbaru lewat `pip install --upgrade yt-dlp`, lalu memverifikasi
+   dengan `python -m yt_dlp --version`.
 
 ---
 
 ## 1.2 Mitigasi Anti-Bot & Rate-Limit
 
-Untuk mengurangi risiko blokir IP / HTTP 429 / terdeteksi bot saat memakai yt-dlp, RCH menyisipkan flag mitigasi otomatis ke setiap panggilan yt-dlp (lewat `lib/core/config.js`).
+Untuk mengurangi risiko blokir IP / HTTP 429 / terdeteksi bot, RCH menyisipkan
+flag mitigasi otomatis ke setiap panggilan yt-dlp (lewat `rch/config.py` →
+`build_ytdlp_args()`).
 
 ### Flag yang otomatis dipakai
 
 | Flag yt-dlp | Nilai default | Tujuan |
 | --- | --- | --- |
 | `--retries` | 3 | Ulangi otomatis saat error sesaat |
-| `--extractor-retries` | 3 | Ulangi ekstraksi metadata |
-| `--fragment-retries` | 3 | Ulangi fragmen download |
 | `--sleep-requests` | 0.5 | Jeda antar request (detik) |
 | `--sleep-interval` | 0.5 | Jeda antar download |
 | `--max-sleep-interval` | 2 | Batas atas jeda acak |
-| `--user-agent` | UA Chrome | Samarkan sebagai browser asli |
+| `--user-agent` | UA Chrome 128 | Samarkan sebagai browser asli |
 
-Selain itu, panggilan `axios` (thumbnail & fallback metadata) punya **retry dengan exponential backoff** saat kena 429/5xx (lewat `lib/core/http.js`).
+Flag opsional (hanya aktif bila diisi): `--proxy`, `--limit-rate`,
+`--cookies-from-browser`.
+
+Selain itu, pemanggilan HTTP di `rch/core/http.py` (`http_get` / `http_post`)
+punya **retry dengan exponential backoff** saat kena 429/5xx.
 
 ### Konfigurasi lewat environment variable
 
-Semua nilai bisa di-override tanpa ubah kode:
+Semua nilai bisa di-override tanpa ubah kode. Urutan resolusi:
+**environment variable → `.rchrc.json` → default**.
 
-| Env var | Default | Keterangan |
-| --- | --- | --- |
-| `RCH_SLEEP_REQUESTS` | 0.5 | Jeda antar request (detik) |
-| `RCH_SLEEP_INTERVAL` | 0.5 | Jeda antar download |
-| `RCH_MAX_SLEEP_INTERVAL` | 2 | Batas atas jeda acak |
-| `RCH_RETRIES` | 3 | Jumlah percobaan ulang |
-| `RCH_USER_AGENT` | UA Chrome | User-Agent kustom |
-| `RCH_PROXY` | (kosong) | Proxy (mis. `http://127.0.0.1:8080`) |
-| `RCH_COOKIES` | (kosong) | Browser sumber cookie (`chrome`/`firefox`/`edge`) |
-| `RCH_LIMIT_RATE` | (kosong) | Batas kecepatan (mis. `2M`) |
+| Env var | Key `.rchrc.json` | Default | Keterangan |
+| --- | --- | --- | --- |
+| `RCH_SLEEP_REQUESTS` | `sleep_requests` | 0.5 | Jeda antar request (detik) |
+| `RCH_SLEEP_INTERVAL` | `sleep_interval` | 0.5 | Jeda antar download |
+| `RCH_MAX_SLEEP_INTERVAL` | `max_sleep_interval` | 2 | Batas atas jeda acak |
+| `RCH_RETRIES` | `retries` | 3 | Jumlah percobaan ulang |
+| `RCH_USER_AGENT` | `user_agent` | UA Chrome | User-Agent kustom |
+| `RCH_PROXY` | `proxy` | (kosong) | Proxy (mis. `http://127.0.0.1:8080`) |
+| `RCH_COOKIES` | `cookies` | (kosong) | Browser sumber cookie |
+| `RCH_LIMIT_RATE` | `limit_rate` | (kosong) | Batas kecepatan (mis. `2M`) |
+| `RCH_CONCURRENCY` | `concurrency` | 2 | Jumlah worker paralel |
+| `RCH_QUALITY` | `quality` | 720p | Kualitas video default |
+
+`.rchrc.json` dibaca dari direktori kerja, lalu `$HOME`.
 
 ### Cookies browser (opsional)
 
@@ -129,21 +156,31 @@ rch channel-info https://www.youtube.com/@namachannel --cookies chrome
 
 ```
 #6downloader/
-├── package.json
-├── README.md
-├── LICENSE
-├── index.js                  # entry point: export { youtube }
-├── lib/
+├── setup.py                  # packaging, entry point rch=rch.cli:main
+├── requirements.txt
+├── rch/
+│   ├── cli.py                # perintah click
+│   ├── config.py             # env + .rchrc.json + default
 │   ├── core/
-│   │   └── zip.js            # helper ZIP murni Node
+│   │   ├── checkpoint.py     # state resume (JSON, atomic write)
+│   │   ├── events.py         # event emitter (progress)
+│   │   ├── export.py         # ekspor CSV/JSON
+│   │   ├── http.py           # requests + retry backoff
+│   │   ├── report.py         # report.txt + history.log
+│   │   └── zip_util.py       # helper ZIP (zipfile)
+│   ├── web/
+│   │   ├── server.py         # GUI Flask
+│   │   ├── static/           # app.js, style.css
+│   │   └── templates/        # index.html
 │   └── youtube/
-│       ├── index.js          # dispatcher: export semua fitur
-│       ├── thumbnail.js      # resolve + download thumbnail (tunggal & massal)
-│       ├── ytmp3.js          # resolve MP4/MP3 (yt-dlp + fallback cnvmp3)
-│       ├── ytmp3gg.js        # resolve multi-kualitas (yt-dlp)
-│       └── playlist.js       # parse playlist YouTube
-└── test/
-    └── test.js               # smoke test semua fitur
+│       ├── common.py         # extract_video_id, slugify
+│       ├── channel.py        # channel-full / -video / -info
+│       ├── metadata.py       # judul, durasi, deskripsi
+│       ├── playlist.py       # parse playlist YouTube
+│       ├── thumbnail.py      # resolve + download thumbnail
+│       └── video.py          # unduh MP4/MP3
+├── tests/                    # 1188 test, mirror struktur rch/
+└── legacy-node/              # implementasi Node.js lama (read-only)
 ```
 
 ---
@@ -151,43 +188,66 @@ rch channel-info https://www.youtube.com/@namachannel --cookies chrome
 ## 3. Alur Kerja
 
 ```
-Kamu kasih URL YouTube
+CLI (rch <perintah>)  atau  GUI web (rch web)
         │
         ▼
-index.js ──► lib/youtube/  (dispatcher per fitur)
+rch/youtube/  (dispatcher per fitur)
         │
-        ├─ thumbnail.js ──► extractVideoId (regex) ──► i.ytimg.com/vi/<ID>/<size>.jpg
-        │                       │                            │
-        │                       ▼                            ▼
-        │                fetchTitle (oEmbed)        download / simpan / zip
+        ├─ thumbnail.py ──► extract_video_id (regex) ──► i.ytimg.com/vi/<ID>/<size>.jpg
+        │                             │                              │
+        │                             ▼                              ▼
+        │                    judul via oEmbed            download / simpan / zip
         │
-        ├─ ytmp3.js ──► extractVideoId ──► yt-dlp (lokal) ──► URL MP4/MP3 langsung
-        │                                       │
-        │                                       └─ fallback: cnvmp3 (HTTP)
+        ├─ video.py ──► extract_video_id ──► yt-dlp (lokal) ──► file MP4/MP3
+        │                    │                    │
+        │                    │                    └─ retry + backoff (403/429)
+        │                    ▼
+        │            judul via oEmbed, fallback ke video_id
         │
-        └─ playlist.js ──► fetch HTML playlist ──► parse ytInitialData ──► daftar video
+        ├─ metadata.py ──► yt-dlp --dump-single-json ──► judul/durasi
+        │                       │ fallback: scrape HTML (oEmbed → <title>)
+        │
+        ├─ playlist.py ──► fetch HTML playlist ──► parse ytInitialData ──► daftar video
+        │
+        └─ channel.py ──► list_ids ──► metadata batch ──► worker paralel
+                                 │
+                                 └─ checkpoint (resume) + report.txt
 ```
 
 ### Pola return (konsisten di semua fungsi)
 
-```js
-// sukses
-{ status: true, result: { ... } }
-// gagal
-{ status: false, message: "..." }
+```python
+# sukses
+{"status": True, "result": {...}}
+# gagal
+{"status": False, "message": "..."}
 ```
+
+### Dependency injection (kunci test offline)
+
+Setiap fungsi I/O menerima dependency sebagai parameter keyword-only, sehingga
+test bisa menyuntikkan objek pengganti tanpa menyentuh jaringan:
+
+| Fungsi | Parameter injeksi |
+| --- | --- |
+| `video.download` | `run_ytdlp`, `fetch_title`, `ensure_updated`, `sleep` |
+| `video.download_once` | `run_ytdlp`, `fetch_title` |
+| `metadata.get_video_info_batch` | `run_ytdlp` |
+| `channel.channel_video` | `list_ids`, `metadata`, `download_video`, `sleep` |
+| `thumbnail.download_thumbnail` | `http_get`, `fetch_title` |
 
 ---
 
 ## 4. Detail Tiap Modul
 
-### 4.1 `lib/youtube/thumbnail.js`
+### 4.1 `rch/youtube/thumbnail.py`
 
-Fokus utama produk. **Tanpa API key, tanpa layanan pihak ketiga, legal & stabil.**
+Fokus utama produk. **Tanpa API key, tanpa layanan pihak ketiga.**
 
-- `extractVideoId(url)` — ekstrak ID 11 karakter via regex. Mendukung `youtube.com/watch?v=`, `youtu.be/`, `shorts/`, `embed/`, `live/`.
-- `fetchTitle(videoId)` — ambil judul dari oEmbed API (`youtube.com/oembed`). Gratis, tanpa key.
-- `thumbnailUrl(videoId, size)` — susun URL thumbnail dari CDN YouTube.
+- `extract_video_id(url)` — ekstrak ID 11 karakter via regex (`rch/youtube/common.py`).
+  Mendukung `youtube.com/watch?v=`, `youtu.be/`, `shorts/`, `embed/`, `live/`.
+- `thumbnail_url(video_id, size)` — susun URL thumbnail dari CDN YouTube.
+- Judul diambil dari oEmbed, dengan fallback ke video ID.
 
 Ukuran yang didukung:
 `default`, `mqdefault`, `hqdefault`, `sddefault`, `maxresdefault`.
@@ -196,101 +256,161 @@ Fungsi publik:
 
 | Fungsi | Deskripsi |
 | --- | --- |
-| `thumbnail(url, opts)` | Resolve semua ukuran thumbnail |
-| `downloadThumbnail(url, opts)` | Download satu thumbnail ke disk |
-| `downloadThumbnails(urls, opts)` | Download massal (konkuren) + opsional ZIP |
-| `thumbnailUrls(urls, opts)` | Resolve URL massal tanpa simpan file |
+| `thumbnail(url)` | Resolve semua ukuran thumbnail |
+| `download_thumbnail(url, ...)` | Download satu thumbnail ke disk |
+| `download_thumbnails(urls, ...)` | Download massal (konkuren) + opsional ZIP |
+| `thumbnail_url(video_id, size)` | Susun URL CDN |
 
-### 4.2 `lib/youtube/ytmp3.js`
+### 4.2 `rch/youtube/video.py`
 
-Resolve link download MP4/MP3.
+Unduh satu video sebagai MP4 atau MP3.
 
-1. Ekstrak video ID.
-2. Ambil judul/thumbnail via oEmbed (fallback metadata).
-3. Panggil `yt-dlp --dump-single-json` untuk baca metadata + URL format langsung.
-4. Pilih format sesuai `format` (`mp4`/`mp3`) dan `quality` (mis. `720p`).
-5. Jika `yt-dlp` tidak tersedia/gagal → fallback ke provider HTTP `cnvmp3`.
+1. Ekstrak video ID (gagal → `ValueError` untuk URL tidak valid).
+2. Ambil judul via oEmbed, fallback ke video ID; `slugify()` jadi nama file aman.
+3. Susun argumen yt-dlp (`build_args()`) — `-f <format_filter>`, plus subtitle bila diminta.
+4. Jalankan yt-dlp (`default_run_ytdlp()`), dengan flag mitigasi dari `config.py`.
+5. Verifikasi file hasil ada; retry/backoff bila error bersifat transient
+   (`is_retryable_error()` mengenali 403 / 429 / timeout).
 
-### 4.3 `lib/youtube/ytmp3gg.js`
+### 4.3 `rch/youtube/metadata.py`
 
-Alternatif resolver berbasis `yt-dlp`:
-- MP3 → audio terbaik (bitrate tertinggi).
-- MP4 → kembalikan daftar beberapa kualitas.
+1. `get_video_info_batch()` — judul + durasi banyak video sekaligus (dipecah per batch).
+2. `get_video_info()` — satu video.
+3. `get_video_info_fallback()` — scrape HTML: oEmbed → tag `<title>`.
+4. `get_channel_ids()` — daftar ID video dari channel (`--flat-playlist`).
+5. `ensure_ytdlp_updated()` — `yt-dlp -U` sekali per proses, kegagalan ditoleransi.
 
-### 4.4 `lib/youtube/playlist.js`
+### 4.4 `rch/youtube/playlist.py`
 
-1. Ekstrak `list=` dari URL.
+1. Ekstrak `list=` dari URL (`extract_playlist_id()`).
 2. Fetch HTML playlist.
 3. Cari `var ytInitialData` (JSON tersembunyi di `<script>`).
-4. Parse rekursif untuk judul, author, thumbnail, dan daftar item video.
+4. Parse rekursif (`parse_playlist_data()`) untuk judul, author, thumbnail, dan item video.
+5. `to_metadata()` menormalkan item menjadi record ekspor; `parse_length_text()`
+   mengubah `lengthText` (mis. `4:05`) menjadi detik.
+
+### 4.5 `rch/youtube/channel.py`
+
+Tiga perintah channel berbagi satu pipeline:
+
+| Fungsi | Isi ZIP |
+| --- | --- |
+| `channel_full()` | video + thumbnail + metadata |
+| `channel_info()` | thumbnail + metadata (tanpa video) |
+| `channel_video()` | video saja |
+
+- Filter: `--limit`, `--min-duration`, `--max-duration`, `--after`, `--shorts`.
+- `folder_name_for()` + `count_slug_collisions()` mencegah tabrakan nama folder
+  antar video dengan slug identik (video ID ditambahkan sebagai akhiran).
+- Checkpoint (`rch/core/checkpoint.py`) ditulis secara atomic sehingga `--resume`
+  aman даже bila proses mati mendadak.
+- Event emitter (`rch/core/events.py`) menyiarkan progres ke CLI maupun GUI.
+
+### 4.6 `rch/core/`
+
+| Modul | Fungsi |
+| --- | --- |
+| `http.py` | `http_get`/`http_post` + retry exponential backoff untuk 429/5xx |
+| `checkpoint.py` | state resume, atomic write, idempotent |
+| `events.py` | emitter `progress` / `phase` / `video:done` |
+| `export.py` | ekspor CSV/JSON, proteksi formula injection pada CSV |
+| `report.py` | `report.txt` per run + `history.log` (append) |
+| `zip_util.py` | pembungkus `zipfile` untuk arsip bulk |
 
 ---
 
 ## 5. Cara Pengujian
 
-### Smoke test bawaan (semua fitur)
+### Menjalankan test
 
 ```bash
-npm test
+# semua test (1188 test, tanpa network)
+python -m pytest
+
+# + coverage
+python -m pytest --cov=rch --cov-report=term-missing
+
+# gerbang CI (wajib 100%)
+python -m pytest --cov=rch --cov-fail-under=100
+
+# hanya satu modul
+python -m pytest tests/youtube/test_video.py
 ```
 
-### Tes fitur satu per satu
+### Struktur test
+
+Test mencerminkan struktur `rch/`:
+
+```
+tests/
+├── test_cli.py                     # helper CLI
+├── test_cli_commands.py            # permukaan perintah
+├── test_config.py                  # resolusi konfigurasi
+├── test_defaults_and_entrypoints.py# default & entry point
+├── core/                           # test_http, test_checkpoint, test_export, ...
+├── web/                            # test_server, test_api_playlist, test_csrf_guard
+└── youtube/                        # test_video, test_channel, test_playlist, ...
+```
+
+### Prinsip pengujian
+
+- **Tanpa network.** Semua HTTP, `yt-dlp`, dan sleeper di-inject sebagai fake.
+- **Tidak ada shared state.** Setiap test menyiapkan fixture-nya sendiri di `tmp_path`.
+- **CLI diuji lewat `click.testing.CliRunner`**, bukan subprocess, kecuali test
+  entry point yang memang menjalankan `python -m rch`.
+- **Naming.** Test menjelaskan perilaku, bukan implementasi
+  (mis. `test_writes_header_and_timestamp`, bukan `test_report_line_2`).
+
+### Verifikasi manual (butuh network)
 
 ```bash
 # Resolve thumbnail
-node -e "const {youtube}=require('./index'); youtube.thumbnail('https://youtu.be/dQw4w9WgXcQ').then(r=>console.log(JSON.stringify(r,null,2)))"
+python -m rch thumbnail https://youtu.be/dQw4w9WgXcQ hqdefault
 
-# Download satu thumbnail
-node -e "const {youtube}=require('./index'); youtube.downloadThumbnail('https://youtu.be/dQw4w9WgXcQ',{size:'maxresdefault',outputDir:'./hasil'}).then(console.log)"
+# Download satu video
+python -m rch video https://youtu.be/dQw4w9WgXcQ --quality 720p
 
-# Download massal + ZIP
-node -e "const {youtube}=require('./index'); youtube.downloadThumbnails(['https://youtu.be/dQw4w9WgXcQ','https://youtu.be/9bZkp7q19f0'],{size:'hqdefault',zip:true,outputDir:'./hasil'}).then(console.log)"
+# Audio
+python -m rch video https://youtu.be/dQw4w9WgXcQ --mp3
 
-# Resolve MP4
-node -e "const {youtube}=require('./index'); youtube.ytmp3('https://youtu.be/dQw4w9WgXcQ',{format:'mp4',quality:'720p'}).then(console.log)"
-```
+# Channel → ZIP
+python -m rch channel-full https://www.youtube.com/@namachannel --limit 5
 
-### Tes dengan video sendiri
-
-```bash
-# Windows (cmd)
-set RIDIKC_TEST_URL=https://youtu.be/ID_KAMU && npm test
-
-# PowerShell
-$env:RIDIKC_TEST_URL="https://youtu.be/ID_KAMU"; npm test
+# GUI
+python -m rch web
 ```
 
 ---
 
-## 6. Contoh Pemakaian Lengkap
+## 6. Contoh Pemakaian Library
 
-```js
-const { youtube } = require("ridikc-content-harvester");
+```python
+from rch.youtube.thumbnail import download_thumbnails, thumbnail
+from rch.youtube.video import download
 
-(async () => {
-  // Resolve semua ukuran thumbnail
-  const thumbs = await youtube.thumbnail("https://youtu.be/dQw4w9WgXcQ");
-  console.log(thumbs.result.thumbnails);
+# Resolve semua ukuran thumbnail
+print(thumbnail("https://youtu.be/dQw4w9WgXcQ")["result"])
 
-  // Download massal + ZIP
-  const batch = await youtube.downloadThumbnails(
+# Download massal + ZIP
+batch = download_thumbnails(
     ["https://youtu.be/dQw4w9WgXcQ", "https://youtu.be/9bZkp7q19f0"],
-    { size: "hqdefault", outputDir: "./downloads", concurrency: 5, zip: true }
-  );
-  console.log(batch.result.zip); // { path, sizeBytes, fileCount }
+    size="hqdefault", output_dir="./downloads", concurrency=5, zip=True,
+)
+print(batch["result"]["zip"])  # { path, sizeBytes, fileCount }
 
-  // Resolve MP4
-  const video = await youtube.ytmp3("https://youtu.be/dQw4w9WgXcQ", {
-    format: "mp4", quality: "720p",
-  });
-  console.log(video.result.downloads);
-})();
+# Unduh video
+print(download("https://youtu.be/dQw4w9WgXcQ",
+               {"format": "mp4", "quality": "720p", "outputDir": "./downloads"}))
 ```
 
 ---
 
 ## 7. Catatan / Keterbatasan
 
-- **Thumbnail**: stabil, cepat, legal, tanpa dependensi eksternal. Direkomendasikan untuk kebutuhan produksi.
-- **Video/audio**: butuh `yt-dlp` terpasang (cek: `yt-dlp --version`). Tanpa `yt-dlp`, fallback ke provider pihak ketiga yang rawan berubah/diblokir (Cloudflare, anti-bot).
-- **Disclaimer**: resolve stream video/audio penuh dapat melanggar ToS platform terkait. Gunakan untuk keperluan R&D/internal yang diizinkan.
+- **Thumbnail**: stabil, cepat, tanpa dependensi eksternal. Direkomendasikan untuk kebutuhan produksi.
+- **Video/audio**: butuh `yt-dlp` terpasang (cek: `yt-dlp --version`). Installer
+  sudah memasangnya secara otomatis.
+- **Kecepatan**: `concurrency` default 2 cukup konservatif. Menaikkan terlalu tinggi
+  memicu blokir rate-limit YouTube.
+- **Disclaimer**: mengunduh stream video/audio dapat melanggar ToS platform terkait.
+  Gunakan untuk keperluan R&D/internal yang diizinkan.
