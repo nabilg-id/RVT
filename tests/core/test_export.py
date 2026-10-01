@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+from pathlib import Path
 
 import pytest
 
@@ -34,6 +35,16 @@ _FORMULA_PAYLOADS = [
 
 def _rows(csv_text):
     return list(csv.reader(io.StringIO(csv_text)))
+
+
+def _raw(path):
+    """Read a file's exact bytes as text, with no newline translation.
+
+    ``Path.read_text(newline=...)`` only exists from Python 3.13, and these
+    assertions are specifically about line endings, so decoding the raw bytes
+    is both version-portable and the more direct check.
+    """
+    return Path(path).read_bytes().decode("utf-8")
 
 
 class TestToCsvStructure:
@@ -224,14 +235,14 @@ class TestExportMetadataCsv:
 
         export_metadata(items, "csv", str(out))
 
-        assert out.read_text(encoding="utf-8", newline="") == to_csv(items)
+        assert _raw(out) == to_csv(items)
 
     def test_written_csv_is_injection_safe(self, tmp_path):
         out = tmp_path / "meta.csv"
 
         export_metadata([{"id": "vid1", "title": "=cmd|calc"}], "csv", str(out))
 
-        rows = _rows(out.read_text(encoding="utf-8", newline=""))
+        rows = _rows(_raw(out))
         assert rows[1][1] == "'=cmd|calc"
 
     def test_written_csv_uses_lf_line_endings(self, tmp_path):
@@ -239,7 +250,7 @@ class TestExportMetadataCsv:
 
         export_metadata([{"id": "vid1"}, {"id": "vid2"}], "csv", str(out))
 
-        assert "\r\n" not in out.read_text(encoding="utf-8", newline="")
+        assert "\r\n" not in _raw(out)
 
     def test_creates_missing_parent_directories(self, tmp_path):
         out = tmp_path / "deeply" / "nested" / "meta.csv"
@@ -300,7 +311,7 @@ class TestExportMetadataJson:
 
         export_metadata([{"id": "vid1"}, {"id": "vid2"}], "json", str(out))
 
-        assert "\r\n" not in out.read_text(encoding="utf-8", newline="")
+        assert "\r\n" not in _raw(out)
 
     def test_creates_missing_parent_directories(self, tmp_path):
         out = tmp_path / "deeply" / "nested" / "meta.json"
