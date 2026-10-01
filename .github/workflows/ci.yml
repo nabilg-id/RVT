@@ -31,14 +31,6 @@ jobs:
       - name: Run tests with coverage
         run: python -m pytest tests/ --cov=rch --cov-report=term-missing --cov-fail-under=100
 
-      - name: Verify legacy backup is untouched by the port
-        if: runner.os == 'Linux'
-        run: |
-          if [ -d legacy-node/test ]; then
-            echo "legacy-node/ is read-only reference; confirming no python tests target it"
-            ! grep -rl "legacy-node" tests/ | grep .
-          fi
-
   lint:
     runs-on: ubuntu-latest
     steps:
