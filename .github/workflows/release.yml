@@ -48,7 +48,7 @@ jobs:
           files: dist/*.tar.gz
           generate_release_notes: true
           body: |
-            ## Ridikc Content Harvester v${{ github.ref_name }}
+            ## Ridikc Content Harvester ${{ github.ref_name }}
 
             Full rewrite dari Node.js ke Python. Implementasi Node.js lama
             tersimpan read-only di `legacy-node/` untuk referensi.
@@ -58,13 +58,14 @@ jobs:
             - **GUI:** HTTP native ke Flask, dibuka di browser lokal
             - **Engine:** seluruh perintah dipertahankan - `thumbnail`, `channel`,
               `list`, `info`, `video`, `download`, `channel-info`,
-              `channel-video`, `channel-full`, `web`
+              `channel-video`, `channel-full`, `playlist`, `web`
             - **Keamanan:** proteksi formula injection pada ekspor CSV, guard
               cross-origin pada endpoint tulis, penamaan file aman via `slugify`
-            - **Uji:** 1100 test, coverage 100%
+            - **Uji:** 1188 test, coverage 100%, hijau di Linux/Windows/macOS
 
             ### Instalasi
             ```
               setup-gui.bat      # Windows
               ./setup-gui.sh     # macOS / Linux
             ```
+            Setelah terpasang, jalankan `rch web` untuk membuka GUI.
