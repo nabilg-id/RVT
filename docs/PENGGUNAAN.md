@@ -340,17 +340,23 @@ Cara rilis:
 python -m pytest --cov=rch --cov-fail-under=100
 ```
 
-3. Commit + tag + push:
+3. Naikkan versi di **tiga tempat sekaligus** — `rch/__init__.py`,
+   `clipper/__init__.py`, dan `pyproject.toml`. `tests/test_version_consistency.py`
+   gagal kalau ketiganya berbeda. Workflow rilis juga menolak tag yang tidak
+   cocok dengan salah satunya.
+
+4. Commit + tag + push:
 ```bash
 git add -A
 git commit -m "feat: deskripsi perubahan"
-git tag -a v2.1.0 -m "v2.1.0 — Deskripsi singkat"
+git tag -a vX.Y.Z -m "vX.Y.Z — Deskripsi singkat"   # ganti X.Y.Z
 git push && git push --tags
 ```
 
-4. GitHub Actions otomatis:
+5. GitHub Actions otomatis:
    - Menjalankan test + coverage 100%.
-   - Memastikan tag cocok dengan versi di `rch/__init__.py` dan `setup.py`.
+   - Memastikan tag cocok dengan versi di `rch/__init__.py`,
+     `clipper/__init__.py`, dan `pyproject.toml`.
    - Membuat **GitHub Release** dengan changelog otomatis.
 
 Aturan SemVer:
