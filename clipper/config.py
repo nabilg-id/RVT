@@ -43,7 +43,7 @@ YOUTUBE_COOKIES_BROWSER = os.getenv("YOUTUBE_COOKIES_BROWSER")
 YOUTUBE_USER_AGENT = os.getenv("YOUTUBE_USER_AGENT")
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "arcee-ai/trinity-large-preview:free")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
 
 RCH_HOST = os.getenv("RCH_HOST", "127.0.0.1")
 RCH_PORT = int(os.getenv("RCH_PORT", "8787"))

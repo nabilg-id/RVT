@@ -81,7 +81,7 @@ Salin `clipper/.env.example` ke `.env` di root repo.
 | Key | Default | Keterangan |
 | --- | --- | --- |
 | `OPENROUTER_API_KEY` | — | **Wajib** untuk pemilihan momen AI |
-| `OPENROUTER_MODEL` | `arcee-ai/trinity-large-preview:free` | Model OpenRouter |
+| `OPENROUTER_MODEL` | `openrouter/free` | Router ke model gratis; ganti bila perlu |
 | `WHISPER_MODEL` | `medium` | tiny / base / small / medium / large-v2 |
 | `WHISPER_LANGUAGE` | auto | `id` / `en`, kosongkan untuk deteksi otomatis |
 | `OUTPUT_DIR` | `./clips` | Folder hasil clip |

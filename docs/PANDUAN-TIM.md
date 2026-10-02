@@ -28,9 +28,9 @@ anggota kalau lebih mudah dilacak.
 3. Isi metode pembayaran (kartu kredit / debit, atau crypto kalau tersedia)
 4. Klik **Add Credits**
 
-> 💡 **Tips hemat:** default aplikasi memakai model gratis
-> `arcee-ai/trinity-large-preview:free`. Kalau model gratis masih tersedia,
-> biaya bisa nol. Cek daftar model gratis di
+> 💡 **Tips hemat:** default aplikasi memakai `openrouter/free`, yaitu router
+> resmi OpenRouter yang selalu mengarah ke model gratis yang tersedia saat itu.
+> Jadi biaya bisa nol tanpa perlu ganti model. Cek daftar model gratis di
 > **https://openrouter.ai/models?fmt=cards&max_price=0**
 
 ## 1.3 Bikin API key
@@ -57,7 +57,7 @@ Buka terminal, tempel (ganti `<KEY>`):
 curl https://openrouter.ai/api/v1/chat/completions \
   -H "Authorization: Bearer <KEY>" \
   -H "Content-Type: application/json" \
-  -d '{"model":"arcee-ai/trinity-large-preview:free","messages":[{"role":"user","content":"ping"}]}'
+  -d '{"model":"openrouter/free","messages":[{"role":"user","content":"ping"}]}'
 ```
 
 Kalau dapat jawaban JSON, key valid. Kalau `401`, key salah. Kalau `402`,
@@ -94,7 +94,7 @@ nano .env      # atau: code .env
 
 ```ini
 OPENROUTER_API_KEY=sk-or-v1-ganti-dengan-key-mu
-OPENROUTER_MODEL=arcee-ai/trinity-large-preview:free
+OPENROUTER_MODEL=openrouter/free
 WHISPER_MODEL=medium
 WHISPER_LANGUAGE=id
 ```
