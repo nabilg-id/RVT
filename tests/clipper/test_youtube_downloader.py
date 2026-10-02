@@ -33,6 +33,8 @@ class FakeYDL:
 
     script: list = []
     seen: list = []
+    #: Extension the fake writes; audio-only tests flip this to mp3/m4a.
+    ext: str = "mp4"
 
     def __init__(self, opts):
         self.opts = opts
@@ -48,30 +50,31 @@ class FakeYDL:
         step = len(FakeYDL.seen) - 1
         action = FakeYDL.script[step] if step < len(FakeYDL.script) else "ok"
         if action == "ok":
-            write_output(self.opts)
+            write_output(self.opts, FakeYDL.ext)
             return {"title": "Judul Video", "duration": 212}
         import yt_dlp
 
         raise yt_dlp.utils.DownloadError(action)
 
 
-def write_output(opts: dict):
+def write_output(opts: dict, ext: str = "mp4"):
     """Create the file yt-dlp would have written, so the post-download check
     finds it.
 
-    The downloader looks for ``<video_id>.mp4`` first, so the stub has to write
-    exactly that name rather than the bare template.
+    The name is derived from ``outtmpl`` because a caller-supplied filename
+    changes the stem, and the extension is passed in because an audio-only
+    download ends as ``.mp3`` rather than ``.mp4``.
     """
     out = opts["outtmpl"]
     template = Path(out[: out.index(".%(ext)s")])
-    target = template.with_name(template.name + ".mp4")
+    target = template.with_name(template.name + "." + ext)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(b"\x00" * 128)
 
 
 def stub(monkeypatch, tmp_path, *, js_runtimes=None, cookies_file=None,
          cookies_content=None, cookies_browser=None, user_agent=None,
-         script=None):
+         script=None, ext=None):
     """Wire every external boundary of the downloader to a stub.
 
     ``_get_js_runtimes`` is a method, so it is patched on the class rather than
@@ -79,6 +82,7 @@ def stub(monkeypatch, tmp_path, *, js_runtimes=None, cookies_file=None,
     """
     FakeYDL.seen = []
     FakeYDL.script = script if script is not None else ["ok"]
+    FakeYDL.ext = ext or "mp4"
 
     monkeypatch.setattr(Y, "COOKIES_FILE",
                         cookies_file if cookies_file is not None
@@ -137,8 +141,30 @@ class TestOptions:
         downloader.download(url or URL)
         return FakeYDL.seen[0]
 
-    def test_format_prefers_video_plus_audio(self, downloader):
-        assert self._run(downloader)["format"] == "bestvideo*+bestaudio/best"
+    def test_format_caps_at_1080p_by_default(self, downloader):
+        """Deliberate change from uncapped 'best': clips are 9:16 and a 4K
+        source only made a 19-second job take twelve minutes."""
+        assert FakeYDL.seen == []
+        downloader.download(URL)
+        assert FakeYDL.seen[0]["format"] == (
+            "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best"
+        )
+
+    def test_explicit_best_keeps_the_uncapped_format(self, tmp_path, monkeypatch):
+        d = stub(monkeypatch, tmp_path)
+        d.download(URL, quality="best")
+        assert FakeYDL.seen[0]["format"] == "bestvideo+bestaudio/best"
+
+    def test_explicit_quality_is_honoured(self, tmp_path, monkeypatch):
+        d = stub(monkeypatch, tmp_path)
+        d.download(URL, quality="360p")
+        assert "height<=360" in FakeYDL.seen[0]["format"]
+
+    def test_quality_can_come_from_the_environment(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("RCH_CLIP_QUALITY", "720p")
+        d = stub(monkeypatch, tmp_path)
+        d.download(URL)
+        assert "height<=720" in FakeYDL.seen[0]["format"]
 
     def test_merges_to_mp4(self, downloader):
         assert self._run(downloader)["merge_output_format"] == "mp4"
