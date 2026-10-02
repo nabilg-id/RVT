@@ -17,9 +17,13 @@ from urllib.parse import urlsplit
 
 from flask import Flask, g, jsonify, render_template, request
 
+from ..core.paths import default_downloads_dir
+
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8787
-DEFAULT_OUT = "./downloads"
+# Same resolution as the CLI, so the GUI and the command line agree on where
+# downloads land instead of quietly writing to two different places.
+DEFAULT_OUT = str(default_downloads_dir())
 
 app = Flask(__name__)
 

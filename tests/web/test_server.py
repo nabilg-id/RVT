@@ -482,7 +482,7 @@ class TestApiDownload:
         client.post("/api/download", json={"url": VIDEO_URL})
 
         _link, options = self.calls[0]
-        assert options == {"format": "mp4", "quality": "720p", "outputDir": "./downloads"}
+        assert options == {"format": "mp4", "quality": "720p", "outputDir": srv.DEFAULT_OUT}
 
     def test_body_fields_override_defaults(self, client):
         client.post("/api/download", json={
@@ -499,7 +499,7 @@ class TestApiDownload:
 
         _link, options = self.calls[0]
         assert options["format"] == "mp4"
-        assert options["outputDir"] == "./downloads"
+        assert options["outputDir"] == srv.DEFAULT_OUT
 
 
 # ---------------------------------------------------------------------------
@@ -541,7 +541,7 @@ class TestChannelJobEndpoints:
 
         client.post("/api/channel-info", json={"url": "https://x/@ch"})
 
-        assert seen["o"] == {"size": "hqdefault", "outputDir": "./downloads",
+        assert seen["o"] == {"size": "hqdefault", "outputDir": srv.DEFAULT_OUT,
                              "limit": None, "shorts": False}
 
     def test_channel_info_body_overrides(self, client, monkeypatch):
@@ -564,7 +564,7 @@ class TestChannelJobEndpoints:
 
         client.post("/api/channel-video", json={"url": "https://x/@ch"})
 
-        assert seen["o"] == {"quality": "720p", "outputDir": "./downloads",
+        assert seen["o"] == {"quality": "720p", "outputDir": srv.DEFAULT_OUT,
                              "limit": None, "shorts": False}
 
     def test_channel_full_merges_size_and_quality(self, client, monkeypatch):
@@ -577,7 +577,7 @@ class TestChannelJobEndpoints:
         })
 
         assert seen["o"] == {"size": "sddefault", "quality": "1080p",
-                             "outputDir": "./downloads", "limit": None, "shorts": False}
+                             "outputDir": srv.DEFAULT_OUT, "limit": None, "shorts": False}
 
     def test_jobs_do_not_share_state(self, client, monkeypatch):
         monkeypatch.setattr("rch.youtube.channel.channel_full",
