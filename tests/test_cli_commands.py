@@ -742,30 +742,67 @@ class TestChannelInfoCommand:
         assert engine.last_options["size"] == "hqdefault"
         assert engine.last_options["outputDir"] == cli_mod.DEFAULT_OUT
 
-    def test_csv_export_from_videos(self, runner, engine, tmp_path):
-        engine.result = {"status": True, "result": {"videos": {"vid1": {"title": "T"}}}}
+    def test_csv_export_from_items(self, runner, engine, tmp_path):
+        """`channel_info` returns `items`, not a `videos` mapping.
+
+        The real envelope is built by `channel.channel_full`, which is what
+        `channel_info` delegates to. Exporting a key the engine never emits
+        silently produced a header-only file.
+        """
+        engine.result = {"status": True, "result": {
+            "total": 1, "success": 1, "failed": 0,
+            "items": [{
+                "id": "vid1", "videoId": "vid1", "title": "Judul Asli",
+                "duration": 212, "uploadDate": "20260101",
+                "description": "Deskripsi", "url": "https://youtu.be/vid1",
+            }],
+        }}
         csv_file = tmp_path / "m.csv"
 
         result = runner.invoke(cli, ["channel-info", "https://x/@ch", "--csv", str(csv_file)])
 
-        assert "CSV:" in result.output
-        assert "T" in csv_file.read_text(encoding="utf-8")
+        assert result.exit_code == 0
+        text = csv_file.read_text(encoding="utf-8")
+        assert "vid1" in text
+        assert "Judul Asli" in text
+        assert "212" in text
+        assert "20260101" in text
+        assert "https://youtu.be/vid1" in text
 
-    def test_json_export_from_videos(self, runner, engine, tmp_path):
-        engine.result = {"status": True, "result": {"videos": {"vid1": {"title": "T"}}}}
+    def test_json_export_from_items(self, runner, engine, tmp_path):
+        engine.result = {"status": True, "result": {
+            "total": 1, "success": 1, "failed": 0,
+            "items": [{
+                "id": "vid1", "videoId": "vid1", "title": "Judul Asli",
+                "duration": 212, "url": "https://youtu.be/vid1",
+            }],
+        }}
         json_file = tmp_path / "m.json"
 
         result = runner.invoke(cli, ["channel-info", "https://x/@ch", "--json", str(json_file)])
 
-        assert "JSON:" in result.output
+        assert result.exit_code == 0
+        payload = json.loads(json_file.read_text(encoding="utf-8"))
+        assert [row["title"] for row in payload] == ["Judul Asli"]
 
-    def test_export_tolerates_missing_videos_key(self, runner, engine, tmp_path):
+    def test_export_tolerates_missing_items_key(self, runner, engine, tmp_path):
         engine.result = {"status": True, "result": {"total": 0}}
         json_file = tmp_path / "m.json"
 
         result = runner.invoke(cli, ["channel-info", "https://x/@ch", "--json", str(json_file)])
 
         assert result.exit_code == 0
+
+    def test_export_handles_empty_items(self, runner, engine, tmp_path):
+        engine.result = {"status": True, "result": {"total": 0, "items": []}}
+        csv_file = tmp_path / "m.csv"
+
+        result = runner.invoke(cli, ["channel-info", "https://x/@ch", "--csv", str(csv_file)])
+
+        assert result.exit_code == 0
+        assert csv_file.read_text(encoding="utf-8").strip() == (
+            "id,title,duration,upload_date,url,description"
+        )
 
     def test_failure_exits_with_code_1(self, runner, engine, tmp_path):
         engine.result = {"status": False, "message": "boom"}

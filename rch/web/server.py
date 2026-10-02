@@ -9,6 +9,7 @@ wildcard bind would expose an unauthenticated downloader to the network.
 """
 from __future__ import annotations
 
+import copy
 import threading
 import webbrowser
 from typing import Any, Dict, Optional
@@ -309,7 +310,19 @@ def api_status(job_id: int):
         job = _JOBS.get(job_id)
         if job is None:
             return jsonify({"error": "Job tidak ditemukan"}), 404
-        return jsonify(dict(job))
+        snapshot = _snapshot(job)
+    return jsonify(snapshot)
+
+
+def _snapshot(job: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a deep, detached copy of a job record.
+
+    The record's ``items`` list is appended to by worker threads while the
+    response is serialised, so a shallow ``dict(job)`` would hand ``jsonify``
+    a list that can grow mid-iteration and render a torn row. A deep copy
+    freezes the state at the moment the lock is released.
+    """
+    return copy.deepcopy(job)
 
 
 @app.route("/api/history")

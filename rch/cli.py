@@ -406,7 +406,12 @@ def channel_info_cmd(url: str, size: Optional[str], **kwargs) -> None:
         click.echo(f"[!] {result.get('message', 'Gagal')}", err=True)
         sys.exit(1)
     click.echo(json.dumps(result["result"], indent=2, ensure_ascii=False))
-    _export(result["result"].get("videos", {}), kwargs.get("csv_path"), kwargs.get("json_path"))
+    items = result["result"].get("items") or []
+    _export(
+        {item.get("videoId") or item.get("id"): item for item in items},
+        kwargs.get("csv_path"),
+        kwargs.get("json_path"),
+    )
 
 
 @cli.command()

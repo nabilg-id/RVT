@@ -41,6 +41,20 @@ def _load_rcrc():
 _rc = _load_rcrc()
 
 
+def _coerce(value, cast, fallback):
+    """Apply ``cast`` to a config value, falling back when it does not fit.
+
+    The config file is user-owned, so a non-numeric value where a number is
+    expected is an ordinary typo rather than an exceptional condition. This
+    keeps a bad ``.rchrc.json`` from raising out of module import, which would
+    otherwise take down every entrypoint including ``--version``.
+    """
+    try:
+        return cast(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
 def _get(name, env_name, fallback):
     v = os.environ.get(env_name)
     if v:
@@ -51,17 +65,32 @@ def _get(name, env_name, fallback):
     return fallback
 
 
+def _get_num(name, env_name, fallback):
+    """Read a numeric setting, coercing strings and tolerating bad values."""
+    return _coerce(_get(name, env_name, fallback), float, fallback)
+
+
+def _get_int(name, env_name, fallback):
+    return _coerce(_get(name, env_name, fallback), int, fallback)
+
+
+def _get_str(name, env_name, fallback):
+    """Read a string setting, ignoring values that are not text."""
+    v = _get(name, env_name, fallback)
+    return v if isinstance(v, str) else fallback
+
+
 CONFIG = {
-    "sleep_requests": float(_get("sleep_requests", "RCH_SLEEP_REQUESTS", 0.5)),
-    "sleep_interval": float(_get("sleep_interval", "RCH_SLEEP_INTERVAL", 0.5)),
-    "max_sleep_interval": float(_get("max_sleep_interval", "RCH_MAX_SLEEP_INTERVAL", 2)),
-    "retries": int(_get("retries", "RCH_RETRIES", 3)),
-    "user_agent": _get("user_agent", "RCH_USER_AGENT", BROWSER_UA),
-    "proxy": _get("proxy", "RCH_PROXY", ""),
-    "cookies": _get("cookies", "RCH_COOKIES", ""),
-    "limit_rate": _get("limit_rate", "RCH_LIMIT_RATE", ""),
-    "concurrency": int(_get("concurrency", "RCH_CONCURRENCY", 2)),
-    "quality": _get("quality", "RCH_QUALITY", "720p"),
+    "sleep_requests": _get_num("sleep_requests", "RCH_SLEEP_REQUESTS", 0.5),
+    "sleep_interval": _get_num("sleep_interval", "RCH_SLEEP_INTERVAL", 0.5),
+    "max_sleep_interval": _get_num("max_sleep_interval", "RCH_MAX_SLEEP_INTERVAL", 2),
+    "retries": _get_int("retries", "RCH_RETRIES", 3),
+    "user_agent": _get_str("user_agent", "RCH_USER_AGENT", BROWSER_UA),
+    "proxy": _get_str("proxy", "RCH_PROXY", ""),
+    "cookies": _get_str("cookies", "RCH_COOKIES", ""),
+    "limit_rate": _get_str("limit_rate", "RCH_LIMIT_RATE", ""),
+    "concurrency": _get_int("concurrency", "RCH_CONCURRENCY", 2),
+    "quality": _get_str("quality", "RCH_QUALITY", "720p"),
 }
 
 

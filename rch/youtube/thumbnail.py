@@ -91,8 +91,10 @@ def download_thumbnail(url: str, *, size="maxresdefault", output_dir="./download
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    final_name = filename if filename else f"{slugify(title)}-{size}.jpg"
-    file_path = out_dir / final_name
+    base = out_dir.resolve()
+    file_path = (out_dir / (filename or f"{slugify(title)}-{size}.jpg")).resolve()
+    if file_path.parent != base:
+        return {"status": False, "message": f"Invalid filename: {filename}"}
 
     if http_get is None:
         from ..core.http import http_get as _default_http_get
@@ -162,10 +164,14 @@ def download_thumbnails(urls, *, size="maxresdefault", output_dir="./downloads",
         out_dir.mkdir(parents=True, exist_ok=True)
         zip_name = zip_name or f"thumbnails-{size}.zip"
         zip_path = out_dir / zip_name
-        files = [
-            (r["result"]["path"], os.path.basename(r["result"]["path"]))
-            for r in success
-        ]
+        files: List = []
+        seen: set = set()
+        for r in success:
+            arcname = os.path.basename(r["result"]["path"])
+            if arcname in seen:
+                continue
+            seen.add(arcname)
+            files.append((r["result"]["path"], arcname))
         create_zip_from_files(files, str(zip_path))
         envelope["result"]["zipPath"] = str(zip_path)
 
