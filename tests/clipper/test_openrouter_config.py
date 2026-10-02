@@ -28,24 +28,61 @@ class TestOpenRouterDefaults:
         # catalogue within days of being set as the default.
         assert ":" not in C.OPENROUTER_MODEL
 
-    def test_missing_key_is_empty_not_a_placeholder(self):
-        # An unset key must stay falsy: AISelector raises on falsy, which is what
-        # turns "no key" into a clear job error instead of a 401 from OpenRouter.
-        assert C.OPENROUTER_API_KEY in (None, "")
+    def test_missing_key_is_falsy_not_a_placeholder(self, monkeypatch):
+        """With nothing configured, the key must be falsy: AISelector raises on
+        falsy, which turns "no key" into a clear job error instead of a 401 from
+        OpenRouter.
+
+        Asserted on a re-imported config rather than the live one - a developer
+        machine with a real key in clipper/.env would otherwise fail this.
+        """
+        import importlib
+        import sys
+
+        import dotenv
+
+        monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **k: False,
+                            raising=False)
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        sys.modules.pop("clipper.config", None)
+        fresh = importlib.import_module("clipper.config")
+
+        assert not fresh.OPENROUTER_API_KEY
+
+        sys.modules.pop("clipper.config", None)
+        importlib.import_module("clipper.config")
+
+    def test_a_real_key_is_never_committed_as_a_default(self):
+        """config.py must not ship a key. Placeholders in docs are fine; a
+        73-character sk-or-v1 value is not."""
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[2]
+        source = (root / "clipper" / "config.py").read_text(encoding="utf-8")
+        assert "sk-or-v1-" not in source
 
 
 class TestAISelectorKeyHandling:
     """AISelector raises when the key is missing, and VideoProcessor builds it
     inside the job's try block, so the GUI shows an error rather than crashing.
+
+    Note the patch target: ai_selector does ``from ..config import
+    OPENROUTER_API_KEY``, so the value is bound into its own namespace at import
+    time. Patching clipper.config has no effect once that import has happened.
     """
 
     @pytest.fixture()
-    def selector_module(self, monkeypatch):
-        monkeypatch.setattr(C, "OPENROUTER_API_KEY", "")
-        mod = pytest.importorskip("clipper.services.ai_selector")
-        return mod
+    def selector_module(self):
+        return pytest.importorskip("clipper.services.ai_selector")
 
-    def test_construction_without_key_raises_valueerror(self, selector_module):
+    def test_construction_without_key_raises_valueerror(self, selector_module, monkeypatch):
+        monkeypatch.setattr(selector_module, "OPENROUTER_API_KEY", "")
+        with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
+            selector_module.AISelector()
+
+    def test_whitespace_key_also_raises(self, selector_module, monkeypatch):
+        # A key made of spaces must not reach OpenRouter as a bearer token.
+        monkeypatch.setattr(selector_module, "OPENROUTER_API_KEY", "   ")
         with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
             selector_module.AISelector()
 

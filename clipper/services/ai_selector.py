@@ -14,12 +14,15 @@ class AISelector:
         """
         Initializes the AISelector with OpenRouter configuration.
         """
-        if not OPENROUTER_API_KEY:
+        # config.py already strips whitespace, but a key made only of spaces is
+        # truthy: without this check it would be sent as a bearer token and come
+        # back as an opaque 401 instead of the clear message below.
+        if not (OPENROUTER_API_KEY or "").strip():
             raise ValueError("OPENROUTER_API_KEY is not set in environment variables.")
-            
+
         self.client = OpenAI(
             base_url="https://openrouter.ai/api/v1",
-            api_key=OPENROUTER_API_KEY,
+            api_key=(OPENROUTER_API_KEY or "").strip(),
         )
         self.model = OPENROUTER_MODEL
         print(f"🤖 Initialized AI Selector with model: {self.model}")

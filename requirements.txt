@@ -13,6 +13,16 @@ moviepy>=1.0.3,<2.0
 torch>=2.0
 faster-whisper>=1.0.0
 
+# faster-whisper 1.2.1 (versi terbaru) memanggil
+# ``av.open(path, metadata_errors="ignore")``, tapi PyAV 19 menghapus parameter
+# itu. Hasilnya setiap transkripsi gagal dengan
+#   TypeError: open() got an unexpected keyword argument 'metadata_errors'
+# dan pipeline jatuh ke klip acak - artinya AI tidak pernah terpanggil.
+# faster-whisper hanya menyebut ``av>=11`` tanpa batas atas, jadi tidak ada
+# versi faster-whisper yang cocok dengan av 19. Pin di sini sampai
+# faster-whisper berhenti mengirim parameter tersebut.
+av>=11,<19
+
 # Deteksi wajah.
 #
 # mediapipe 0.10.30 dan 1.x menghapus ``mediapipe.solutions``. Pipeline ini
