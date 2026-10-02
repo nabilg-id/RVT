@@ -10,13 +10,21 @@
 # mediapipe, dan tanpa keduanya test face tracker yang paling penting -
 # degradasi saat model hilang, skala koordinat, dan penghalusan lintasan -
 # ikut ter-skip. Yang berat itu yang tidak dimasukkan.
-
+#
+# openai dan imageio-ffmpeg ditambahkan karena test downloader mengimpor
+# clipper.services.youtube_downloader dan clipper.services.ai_selector di level
+# modul. Tanpa keduanya pytest gagal *saat collection* - bukan dengan skip,
+# tapi dengan ImportError yang menghentikan seluruh run. Itu persis kelas
+# kegagalan yang pernah menutupi face tracker dan diabaikan selama berbulan-bulan
+# karena test-nya ter-skip, bukan karena tidak ada.
 flask>=3.0
 click>=8.1
 requests>=2.31
 beautifulsoup4>=4.12
 yt-dlp>=2026.8.19
 python-dotenv>=1.0
+openai>=1.0
+imageio-ffmpeg>=0.4.9
 
 numpy>=1.26
 opencv-python-headless>=4.9
