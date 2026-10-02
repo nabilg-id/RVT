@@ -96,6 +96,42 @@ class TestStaticAndIndex:
         assert client.get("/static/app.js").status_code == 200
 
 
+class TestClipDownload:
+    """The results table links to /clips/<name>, so that route is the only way
+    a finished clip reaches the user. Nothing exercised it, which is how the
+    link path drifted from the route unnoticed."""
+
+    def test_serves_a_finished_clip(self, client):
+        A.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        (A.OUTPUT_DIR / "clip_1_88pts_v.mp4").write_bytes(b"\x00" * 2048)
+
+        r = client.get("/clips/clip_1_88pts_v.mp4")
+        assert r.status_code == 200
+        assert len(r.data) == 2048
+
+    def test_missing_clip_is_404(self, client):
+        A.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        assert client.get("/clips/tidak_ada.mp4").status_code == 404
+
+    @pytest.mark.parametrize(
+        "target",
+        ["../secret.txt", "..%2fsecret.txt", "..\\secret.txt"],
+    )
+    def test_traversal_outside_output_dir_is_refused(self, client, tmp_path, target):
+        (tmp_path / "secret.txt").write_text("rahasia")
+        A.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+        r = client.get(f"/clips/{target}")
+        assert r.status_code == 404
+        assert b"rahasia" not in r.data
+
+    def test_app_js_links_to_this_route(self, client):
+        # Guards against the URL drifting apart again: the template builds
+        # hrefs client-side, so the string lives only in app.js.
+        body = client.get("/static/app.js").get_data(as_text=True)
+        assert "/clips/" in body
+
+
 class TestClipRequestValidation:
     def test_missing_url_is_400(self, client):
         r = client.post("/api/clip", json={})

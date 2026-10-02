@@ -305,8 +305,8 @@ Tiga perintah channel berbagi satu pipeline:
 - Filter: `--limit`, `--min-duration`, `--max-duration`, `--after`, `--shorts`.
 - `folder_name_for()` + `count_slug_collisions()` mencegah tabrakan nama folder
   antar video dengan slug identik (video ID ditambahkan sebagai akhiran).
-- Checkpoint (`rch/core/checkpoint.py`) ditulis secara atomic sehingga `--resume`
-  aman даже bila proses mati mendadak.
+- Checkpoint (`rch/core/checkpoint.py`) ditulis secara atomik sehingga `--resume`
+  tetap aman meskipun proses mati mendadak.
 - Event emitter (`rch/core/events.py`) menyiarkan progres ke CLI maupun GUI.
 
 ### 4.6 `rch/core/`
