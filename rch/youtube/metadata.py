@@ -1,6 +1,6 @@
 """YouTube metadata collection (Python rewrite).
 
-Ported from ``legacy-node/lib/youtube/metadata.js``.
+Ported from the Node.js ``lib/youtube/metadata.js``.
 
 Both external boundaries are injectable so the whole module is testable
 without a network or a subprocess:

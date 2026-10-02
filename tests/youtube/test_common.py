@@ -1,7 +1,7 @@
 """Tests for rch.youtube.common — slugify & extract_video_id.
 
 These mirror the contract of the legacy Node.js implementation in
-``legacy-node/lib/youtube/video.js`` and ``legacy-node/test/slugify.test.js``,
+the Node.js ``lib/youtube/video.js`` and the Node.js ``test/slugify.test.js``,
 plus additional edge cases required for 100% coverage of security-critical
 filename/URL helpers.
 """

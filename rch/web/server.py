@@ -1,6 +1,6 @@
 """Flask web GUI — local browser interface.
 
-Parity target: ``legacy-node/web/server.js``. The same six endpoints are
+Parity target: the Node.js ``web/server.js``. The same six endpoints are
 exposed, with the same request/response envelopes, plus ``/api/history`` and
 ``/api/quit`` for the local single-user workflow.
 

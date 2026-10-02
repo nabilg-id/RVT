@@ -187,7 +187,7 @@ python -m pytest --cov=rch --cov-report=term-missing       # + coverage
 python -m pytest --cov=rch --cov-fail-under=100            # gerbang CI
 ```
 
-1188 test, coverage 100%. Seluruh test berjalan tanpa network — HTTP, `yt-dlp`,
+1248 test, coverage 100%. Seluruh test berjalan tanpa network — HTTP, `yt-dlp`,
 dan sistem file di-inject sebagai dependency agar deterministik.
 
 ---
@@ -201,7 +201,7 @@ rch/
 ├── core/           # checkpoint, events, export, http, report, zip_util
 ├── web/            # GUI Flask + static + template
 └── youtube/        # channel, playlist, thumbnail, video, metadata
-legacy-node/        # implementasi Node.js lama (read-only, referensi)
+tests/              # 1248 test, mirror struktur rch/
 ```
 
 ---

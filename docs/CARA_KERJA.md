@@ -2,8 +2,8 @@
 
 Dokumen ini menjelaskan arsitektur, alur kerja, dan cara pengujian **Ridikc Content Harvester** untuk tim R&D.
 
-> Implementasi Node.js yang lama tersimpan read-only di `legacy-node/` sebagai referensi historis.
-> Dokumen ini menjelaskan versi Python yang aktif.
+> Dokumen ini menjelaskan versi Python yang aktif. Riwayat proyek ditulis ulang
+> penuh ke Python pada Juli 2026, jadi tidak ada sisa kode Node.js di repo ini.
 
 ---
 
@@ -179,8 +179,7 @@ rch channel-info https://www.youtube.com/@namachannel --cookies chrome
 │       ├── playlist.py       # parse playlist YouTube
 │       ├── thumbnail.py      # resolve + download thumbnail
 │       └── video.py          # unduh MP4/MP3
-├── tests/                    # 1188 test, mirror struktur rch/
-└── legacy-node/              # implementasi Node.js lama (read-only)
+└── tests/                    # 1248 test, mirror struktur rch/
 ```
 
 ---
@@ -324,7 +323,7 @@ Tiga perintah channel berbagi satu pipeline:
 ### Menjalankan test
 
 ```bash
-# semua test (1188 test, tanpa network)
+# semua test (1248 test, tanpa network)
 python -m pytest
 
 # + coverage

@@ -1,6 +1,6 @@
 """YouTube thumbnail URL resolution & download (Python rewrite).
 
-Ported from ``legacy-node/lib/youtube/thumbnail.js``. The pure URL-building
+Ported from the Node.js ``lib/youtube/thumbnail.js``. The pure URL-building
 helpers (``thumbnail_url``, ``THUMBNAIL_SIZES``) are covered exhaustively; the
 network-bound ``thumbnail`` resolver accepts an injectable title-fetcher so it
 can be unit-tested without HTTP.

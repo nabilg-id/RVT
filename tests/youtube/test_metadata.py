@@ -1,6 +1,6 @@
 """Tests for rch.youtube.metadata — batch metadata collection.
 
-Ported from ``legacy-node/lib/youtube/metadata.js``. Two boundaries are
+Ported from the Node.js ``lib/youtube/metadata.js``. Two boundaries are
 injected so nothing here touches the network or spawns a process: the yt-dlp
 runner (``run_ytdlp``) and the HTTP getter (``http_get``).
 

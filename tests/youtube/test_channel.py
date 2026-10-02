@@ -3,7 +3,7 @@
 Covers the pure helpers (URL normalisation, folder-name disambiguation,
 duration/date filtering, JS-compatible int parsing) and the three orchestration
 modes (``channel-info``, ``channel-video``, ``channel-full``) ported from
-``legacy-node/lib/youtube/channelFull.js`` and ``channelVideo.js``.
+the Node.js ``lib/youtube/channelFull.js`` and ``channelVideo.js``.
 
 Every external boundary (yt-dlp enumeration, metadata lookup, per-video
 download, thumbnail HTTP fetch, sleep) is an injected fake — no network, no

@@ -1,7 +1,7 @@
 """YouTube URL parsing and filename safety utilities.
 
 Pure functions extracted from the legacy Node.js implementation in
-``legacy-node/lib/youtube/video.js`` and ``legacy-node/lib/youtube/thumbnail.js``.
+the Node.js ``lib/youtube/video.js`` and the Node.js ``lib/youtube/thumbnail.js``.
 These are the most critical helpers because they guard path safety (slugify
 prevents path traversal) and input validation (extract_video_id guards every
 downstream HTTP call).

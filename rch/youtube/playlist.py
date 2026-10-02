@@ -1,6 +1,6 @@
 """YouTube playlist scraping (Python rewrite).
 
-Ported from ``legacy-node/lib/youtube/playlist.js``. The pure helpers
+Ported from the Node.js ``lib/youtube/playlist.js``. The pure helpers
 (``extract_playlist_id``, ``parse_playlist_data``) are unit-tested directly;
 ``scrape`` accepts an injectable ``fetch_html`` callable so it can be tested
 without network access.

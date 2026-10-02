@@ -10,5 +10,9 @@ node_modules/
 coverage/
 .coverage
 .pytest_cache/
+.ruff_cache/
 htmlcov/
 .rch-checkpoint.json
+
+# Tidak sengaja terlacak oleh filter-repo saatrewrite; jangan pernah di-commit.
+legacy-node/

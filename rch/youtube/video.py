@@ -1,6 +1,6 @@
 """YouTube video/mp3 download (Python rewrite).
 
-Ported from ``legacy-node/lib/youtube/video.js``. All external boundaries
+Ported from the Node.js ``lib/youtube/video.js``. All external boundaries
 (yt-dlp subprocess, oEmbed HTTP, sleep) are injectable so the retry/format
 logic can be tested without network or process spawning.
 """

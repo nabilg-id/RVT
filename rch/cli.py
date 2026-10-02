@@ -1,6 +1,6 @@
 """RCH command-line interface (click).
 
-Parity target: ``legacy-node/bin/rch.js``. Every legacy subcommand is
+Parity target: the Node.js ``bin/rch.js``. Every legacy subcommand is
 preserved — ``thumbnail``, ``channel``, ``list``, ``info``, ``video``,
 ``download``, ``channel-full``, ``channel-info``, ``channel-video``, and
 ``web``/``gui``/``serve``.

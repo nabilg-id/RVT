@@ -1,7 +1,7 @@
 """YouTube channel-scoped harvesting (Python rewrite).
 
-Ported from ``legacy-node/lib/youtube/channelFull.js`` (modes ``channel-info``
-and ``channel-full``) and ``legacy-node/lib/youtube/channelVideo.js`` (mode
+Ported from the Node.js ``lib/youtube/channelFull.js`` (modes ``channel-info``
+and ``channel-full``) and the Node.js ``lib/youtube/channelVideo.js`` (mode
 ``channel-video``). Every external boundary — channel enumeration, metadata
 lookup, per-video download, thumbnail HTTP fetch, and sleep — is a keyword-only
 injectable so the orchestration is testable without network or subprocesses.

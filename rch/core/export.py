@@ -1,6 +1,6 @@
 """Export metadata to CSV / JSON.
 
-Ported from ``legacy-node/lib/core/export.js``.
+Ported from the Node.js ``lib/core/export.js``.
 
 Security: CSV cells are never written raw. Excel, LibreOffice and Google
 Sheets evaluate a cell as a formula when its first character is one of
