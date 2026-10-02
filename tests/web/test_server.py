@@ -132,8 +132,11 @@ class TestSummarise:
             {"ok": True, "videoId": "v1", "title": "T", "error": None},
         ]}})
 
+        # ``status`` is cross-read from the shared ledger; "v1" is not a valid
+        # id, so nothing is found and the field is None rather than missing.
         assert result["items"] == [
-            {"ok": True, "videoId": "v1", "title": "T", "error": ""},
+            {"ok": True, "videoId": "v1", "title": "T", "error": "",
+             "status": None},
         ]
 
     def test_full_item_shape_maps_video_ok_to_ok(self):
@@ -253,7 +256,8 @@ class TestEmitter:
         emitter.emit("video:done", {"id": "v1", "title": "T", "ok": True})
 
         assert srv._JOBS[1]["items"] == [
-            {"ok": True, "videoId": "v1", "title": "T", "error": ""},
+            {"ok": True, "videoId": "v1", "title": "T", "error": "",
+             "status": None},
         ]
 
     def test_video_done_failure_appends_a_failed_row(self):
@@ -685,8 +689,29 @@ class TestApiHistory:
 
         record = client.get(f"/api/history?out={tmp_path}").get_json()[0]
 
-        assert set(record) == {"timestamp", "command", "channel",
-                               "total", "success", "failed"}
+        # ``items`` is additive: the six original columns still drive the table,
+        # and items carries the per-video statuses behind the new column.
+        assert {"timestamp", "command", "channel",
+                "total", "success", "failed"} <= set(record)
+        assert record["items"] == []
+
+    def test_record_lists_the_statuses_of_the_videos_it_covered(self, client, tmp_path):
+        from rch.core.report import append_history
+        from rch.core.tracker import append_event
+
+        append_history(tmp_path, {
+            "command": "channel-video", "channel": "https://x/@ch",
+            "total": 2, "success": 1, "failed": 1,
+            "videoIds": ["dQw4w9WgXcQ", "jNQXAC9IVRw"],
+        })
+        append_event("dQw4w9WgXcQ", "clip", status="done", files=["c.mp4"])
+        append_event("jNQXAC9IVRw", "download", status="done")
+
+        record = client.get(f"/api/history?out={tmp_path}").get_json()[0]
+
+        statuses = {i["videoId"]: i["status"] for i in record["items"]}
+        assert statuses == {"dQw4w9WgXcQ": "clipped",
+                            "jNQXAC9IVRw": "downloaded"}
 
     def test_reader_rejection_becomes_a_400_not_a_500(self, client, monkeypatch, tmp_path):
         """The reader validates its input, so a rejection must not surface as a crash."""
@@ -893,7 +918,7 @@ class TestFrontendContract:
 
         row = _job(client, job_id)["result"]["items"][0]
 
-        assert set(row) == {"ok", "videoId", "title", "error"}
+        assert set(row) == {"ok", "videoId", "title", "error", "status"}
         assert row["ok"] is True, "app.js would label a successful channel-full row GAGAL"
 
     def test_responses_are_json(self, client):

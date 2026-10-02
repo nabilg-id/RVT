@@ -114,6 +114,29 @@
     loadHistory();
   }
 
+  var STATUS_LABELS = {
+    none: "Belum", downloaded: "Download", queued: "Antri",
+    processing: "Proses", clipped: "Sudah Clip",
+    download_failed: "Gagal Download", clip_failed: "Gagal Clip"
+  };
+
+  function clipSummary(record) {
+    var items = record.items || [];
+    if (!items.length) return '<span class="muted">-</span>';
+    var counts = {};
+    items.forEach(function (it) {
+      var key = it.status || "none";
+      counts[key] = (counts[key] || 0) + 1;
+    });
+    var parts = Object.keys(counts).sort(function (a, b) {
+      return counts[b] - counts[a];
+    }).map(function (k) {
+      return '<span class="chip s-' + esc(k) + '">' +
+             esc(STATUS_LABELS[k] || k) + " " + counts[k] + "</span>";
+    });
+    return parts.join(" ");
+  }
+
   async function loadHistory() {
     var out = $("#out").value.trim() || "./downloads";
     var rows;
@@ -124,7 +147,7 @@
     }
     var tbody = $("#historyRows");
     if (!rows || !rows.length) {
-      tbody.innerHTML = '<tr class="empty"><td colspan="6">Belum ada riwayat.</td></tr>';
+      tbody.innerHTML = '<tr class="empty"><td colspan="7">Belum ada riwayat.</td></tr>';
       return;
     }
     tbody.innerHTML = rows.map(function (r) {
@@ -135,6 +158,7 @@
         "<td>" + esc(r.total) + "</td>" +
         "<td>" + esc(r.success) + "</td>" +
         "<td>" + esc(r.failed) + "</td>" +
+        "<td>" + clipSummary(r) + "</td>" +
         "</tr>";
     }).join("");
   }

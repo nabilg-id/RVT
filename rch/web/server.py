@@ -15,7 +15,7 @@ import webbrowser
 from typing import Any, Dict, Optional
 from urllib.parse import urlsplit
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, g, jsonify, render_template, request
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8787
@@ -80,22 +80,40 @@ def _next_job_id() -> int:
 
 
 def _row(item: Dict[str, Any]) -> Dict[str, Any]:
-    """Reduce one engine result item to the four fields the UI table renders.
+    """Reduce one engine result item to the fields the UI table renders.
 
     ``channel-video`` items carry ``ok`` while ``channel-full`` and
     ``channel-info`` items carry ``videoOk``; both are normalised onto ``ok``
     because app.js labels every row from that single field. ``None`` in the
     text fields collapses to ``""`` so the payload is JSON-stable.
+
+    ``status`` is cross-read from the shared ledger so a run table can also say
+    where the video stands overall - downloaded, already clipped, queued - not
+    just whether this one attempt succeeded.
     """
     ok = item.get("ok")
     if ok is None:
         ok = item.get("videoOk")
+    video_id = item.get("videoId") or item.get("id")
     return {
         "ok": ok,
-        "videoId": item.get("videoId") or item.get("id"),
+        "videoId": video_id,
         "title": item.get("title") or "",
         "error": item.get("error") or "",
+        "status": _tracker_status(video_id),
     }
+
+
+def _tracker_status(video_id: Any) -> Optional[str]:
+    """Overall status for a video, or None when it is not in the ledger.
+
+    Cached on ``flask.g`` so it lasts exactly one request: a channel run can be
+    hundreds of rows, and folding the ledger per row would re-read the file
+    hundreds of times. Outside a request context the answer is simply None.
+    """
+    if not video_id:
+        return None
+    return _tracker_statuses().get(video_id)
 
 
 def _summarise(result: Any) -> Any:
@@ -335,7 +353,41 @@ def api_history():
     except TypeError:
         return jsonify({"error": "Parameter out tidak valid"}), 400
     records.reverse()
+    # Each row gains the per-video statuses it covered, so the table can show
+    # "3 dari 5 sudah clip" instead of only aggregate counts. Older rows have
+    # no ids= field and simply report an empty list.
+    for record in records:
+        ids = record.get("videoIds") or []
+        statuses = _tracker_statuses()
+        record["items"] = [
+            {"videoId": vid, "status": statuses.get(vid)} for vid in ids
+        ]
     return jsonify(records)
+
+
+def _tracker_statuses() -> Dict[str, str]:
+    """Map of video id to overall status, cached for this request.
+
+    Returns an empty map outside an application context, where there is no
+    request to cache against - ``_row`` is called directly by the tests and by
+    ``_summarise`` outside the request cycle.
+    """
+    try:
+        cache = getattr(g, "_tracker_statuses", None)
+    except RuntimeError:
+        return {}
+    if cache is None:
+        try:
+            from ..core.tracker import statuses_for
+
+            cache = statuses_for()
+        except Exception:  # noqa: BLE001 - a missing ledger must not break history
+            cache = {}
+        try:
+            g._tracker_statuses = cache
+        except RuntimeError:
+            return cache
+    return cache
 
 
 @app.route("/api/quit", methods=["POST"])
