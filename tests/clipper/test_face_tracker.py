@@ -10,10 +10,19 @@ from __future__ import annotations
 
 import types
 
-import numpy as np
 import pytest
 
-from clipper.services import face_tracker as FT
+from clipper.services import face_tracker as FT  # noqa: E402
+
+np = pytest.importorskip("numpy")
+
+#: The detector stub stands in for the TFLite model, but cv2 and mp.Image are
+#: still needed to turn a frame into something the stub receives. Those are the
+#: heavy ones, so only the tests that actually run _detect are gated.
+requires_media = pytest.mark.skipif(
+    not FT.MEDIA_STACK_AVAILABLE,
+    reason="opencv/mediapipe belum terpasang",
+)
 
 
 class _Box:
@@ -101,6 +110,7 @@ class TestGracefulDegradation:
         assert t.track_and_crop(clip) is clip
 
 
+@requires_media
 class TestDetectContract:
     def test_empty_result_gives_empty_list(self, tracker):
         assert tracker.detect_faces_in_frame(_frame()) == []
@@ -163,6 +173,7 @@ class TestDetectContract:
         assert tracker.detect_faces_in_frame(np.zeros((0, 0, 3), dtype=np.uint8)) == []
 
 
+@requires_media
 class TestCaching:
     def test_same_timestamp_is_served_from_cache(self, tracker):
         calls = []
@@ -235,6 +246,7 @@ class TestClose:
         t.close()
         assert t.available is False
 
+    @requires_media
     def test_close_drops_the_cache(self, tracker):
         tracker.detect_faces_in_frame(_frame(), frame_time=1.0)
         assert tracker.face_cache

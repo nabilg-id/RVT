@@ -5,6 +5,11 @@
 # pipeline clip di-exclude dari gerbang coverage (lihat [tool.coverage.run]
 # di pyproject.toml). Test pipeline clip otomatis di-skip lewat
 # pytest.importorskip bila dependensi berat tidak tersedia.
+#
+# numpy dan opencv-headless tetap ikut karena keduanya kecil dibanding
+# mediapipe, dan tanpa keduanya test face tracker yang paling penting -
+# degradasi saat model hilang, skala koordinat, dan penghalusan lintasan -
+# ikut ter-skip. Yang berat itu yang tidak dimasukkan.
 
 flask>=3.0
 click>=8.1
@@ -12,6 +17,9 @@ requests>=2.31
 beautifulsoup4>=4.12
 yt-dlp>=2026.8.19
 python-dotenv>=1.0
+
+numpy>=1.26
+opencv-python-headless>=4.9
 
 pytest>=8.0
 pytest-cov>=4.1

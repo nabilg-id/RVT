@@ -16,9 +16,26 @@ import urllib.request
 from pathlib import Path
 from typing import Dict, List, Optional
 
-import cv2
-import mediapipe as mp
-import numpy as np
+try:  # pragma: no cover - exercised by the absence of the media stack in CI
+    import cv2
+except ImportError:  # pragma: no cover
+    cv2 = None
+
+try:  # pragma: no cover - ditto
+    import mediapipe as mp
+except ImportError:  # pragma: no cover
+    mp = None
+
+try:  # pragma: no cover - ditto
+    import numpy as np
+except ImportError:  # pragma: no cover
+    np = None
+
+#: True hanya bila seluruh stack deteksi bisa diimpor. ``FaceTracker``
+#: tetap bisa dibuat tanpa ini; ia akan melumpuhkan diri dan fallback ke
+#: center crop, sama seperti ketika modelnya hilang. numpy ikut di sini karena
+#: ``track_and_crop`` memakainya untuk mengambil sample frame dan median.
+MEDIA_STACK_AVAILABLE = cv2 is not None and mp is not None and np is not None
 
 MODEL_FILENAME = "blaze_face_short_range.tflite"
 MODEL_URL = (
@@ -76,6 +93,16 @@ class FaceTracker:
         self.disabled_reason: Optional[str] = None
 
         try:
+            if not MEDIA_STACK_AVAILABLE:
+                missing = [
+                    name for name, mod in
+                    (("opencv", cv2), ("mediapipe", mp), ("numpy", np))
+                    if mod is None
+                ]
+                raise RuntimeError(
+                    "dependensi deteksi wajah belum terpasang: "
+                    + ", ".join(missing)
+                )
             resolved = ensure_model(model_path, download=auto_download)
             self._build_detector(resolved)
             self.available = True
