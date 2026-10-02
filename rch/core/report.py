@@ -8,9 +8,14 @@ HISTORY_FILE = "history.log"
 REPORT_FILE = "report.txt"
 
 _FIELD_PREFIXES = {"total": "total=", "success": "sukses=", "failed": "gagal="}
+_ID_FIELD_PREFIX = "ids="
 _FIELD_ORDER = ("timestamp", "command", "channel", "total", "success", "failed")
 
 _MIN_HISTORY_FIELDS = 6
+
+#: A channel run can touch hundreds of videos; the history line stays readable
+#: by listing only the first few and counting the rest.
+_MAX_IDS_IN_HISTORY = 12
 
 
 def _strip_prefix(value: str, prefix: str) -> str:
@@ -22,7 +27,9 @@ def parse_history_line(line: str) -> Optional[dict]:
 
     Returns ``None`` when the line has fewer than the six expected
     pipe-separated fields, so malformed entries are skipped rather than
-    surfacing as half-populated records.
+    surfacing as half-populated records. A trailing ``ids=`` field, written by
+    newer runs, is surfaced as ``videoIds``; lines without it keep the original
+    six keys so existing callers are unaffected.
     """
     parts = [p.strip() for p in str(line).split("|")]
     if len(parts) < _MIN_HISTORY_FIELDS:
@@ -35,7 +42,13 @@ def parse_history_line(line: str) -> Optional[dict]:
         "success": _strip_prefix(parts[4], _FIELD_PREFIXES["success"]),
         "failed": _strip_prefix(parts[5], _FIELD_PREFIXES["failed"]),
     }
-    return {key: raw[key] for key in _FIELD_ORDER}
+    record = {key: raw[key] for key in _FIELD_ORDER}
+
+    if len(parts) > _MIN_HISTORY_FIELDS:
+        extra = _strip_prefix(parts[6], _ID_FIELD_PREFIX)
+        if extra != parts[6] and extra:
+            record["videoIds"] = [v for v in extra.split(",") if v]
+    return record
 
 
 def read_history(output_dir) -> List[dict]:
@@ -105,16 +118,29 @@ def write_report(output_dir, report):
 
 
 def append_history(output_dir, report):
-    """Append summary line to history.log."""
+    """Append summary line to history.log.
+
+    ``videoIds`` is appended as a trailing field so the run table can show what
+    was actually touched. Older lines have six fields and older readers ignore
+    extras; the id list is capped because a 200-video channel would otherwise
+    turn one line into a wall of text.
+    """
     now = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
-    line = " | ".join([
+    parts = [
         now,
         report.get("command", "-"),
         report.get("channel", "-"),
         f"total={report.get('total', '-')}",
         f"sukses={report.get('success', '-')}",
         f"gagal={report.get('failed', '-')}",
-    ])
+    ]
+    ids = report.get("videoIds") or []
+    if ids:
+        shown = ",".join(str(v) for v in ids[:_MAX_IDS_IN_HISTORY])
+        if len(ids) > _MAX_IDS_IN_HISTORY:
+            shown += f",+{len(ids) - _MAX_IDS_IN_HISTORY}"
+        parts.append(f"ids={shown}")
+    line = " | ".join(parts)
     p = Path(output_dir)
     p.mkdir(parents=True, exist_ok=True)
     file_path = p / HISTORY_FILE

@@ -471,6 +471,10 @@ def _finish_channel_result(result: Dict, command: str, url: str, out_dir: str) -
         "failed": res.get("failed"),
         "zipPath": res.get("zipPath"),
         "fails": [{"id": f.get("videoId"), "error": f.get("error")} for f in fails],
+        # Recorded so the dashboard can show which videos a run covered rather
+        # than only the aggregate counts.
+        "videoIds": [i.get("videoId") for i in res.get("items", [])
+                     if i.get("videoId")],
     }
     click.echo(f"Report: {_abs(write_report(out_dir, report))}")
     append_history(out_dir, report)

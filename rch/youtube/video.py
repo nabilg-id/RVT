@@ -43,6 +43,21 @@ _OEMBED_URL = (
 _DOWNLOADED_BUT_MISSING = (
     "Download selesai tapi file tidak ditemukan."
 )
+
+
+def _track(video_id: Optional[str], event: str, **fields) -> None:
+    """Record progress in the shared ledger, never letting it break a download.
+
+    Imported lazily so a tracker write cannot become an import-time
+    dependency of the pure retry/format logic, and guarded because the ledger
+    is observability: a download must not fail because tracking did.
+    """
+    try:
+        from ..core.tracker import append_event
+
+        append_event(video_id, event, **fields)
+    except Exception:  # noqa: BLE001 - tracking must never break a download
+        pass
 _INVALID_URL = "Invalid YouTube video URL."
 
 
@@ -242,7 +257,11 @@ def download_once(url: str, options: Optional[Dict] = None, *,
 
     final_path = Path(output_dir) / f"{safe_title}.{ext}"
     if not final_path.exists():
+        _track(video_id, "download", status="failed", error=_DOWNLOADED_BUT_MISSING)
         raise ValueError(_DOWNLOADED_BUT_MISSING)
+
+    _track(video_id, "download", status="done", path=str(final_path),
+           title=safe_title)
 
     return {
         "status": True,
@@ -291,9 +310,12 @@ def download(url: str, options: Optional[Dict] = None, *,
                     break
                 sleeper(_RETRY_BASE_DELAY_SECONDS * (2 ** attempt))
 
+        _track(extract_video_id(url), "download", status="failed",
+               error=last_message)
         return {
             "status": False,
             "message": last_message or "Download gagal.",
         }
     except Exception as exc:
+        _track(extract_video_id(url), "download", status="failed", error=str(exc))
         return {"status": False, "message": str(exc)}

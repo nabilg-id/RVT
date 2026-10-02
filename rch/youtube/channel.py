@@ -16,6 +16,7 @@ from typing import Callable, Dict, List, Optional
 
 from ..core.checkpoint import clear_checkpoint, load_checkpoint, mark_completed, save_checkpoint
 from ..core.events import create_emitter
+from ..core.tracker import append_event
 from ..core.zip_util import ZipStream
 from .common import slugify
 
@@ -66,6 +67,19 @@ def _mark_completed(output_dir: str, video_id: str) -> None:
     """
     with _CHECKPOINT_LOCK:
         mark_completed(output_dir, video_id)
+
+
+def _track(video_id: str, event: str, **fields) -> None:
+    """Record progress in the shared per-video ledger.
+
+    Guarded because this runs inside a worker pool: a tracker write that fails
+    must not turn one video's success into a run failure. Safe to call from
+    several threads - tracker.py serialises the append itself.
+    """
+    try:
+        append_event(video_id, event, **fields)
+    except Exception:  # noqa: BLE001 - tracking must never break a harvest
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -512,6 +526,10 @@ def channel_video(channel_url: str, options: Optional[Dict] = None, *,
 
         if ok:
             _mark_completed(str(output_dir), video_id)
+            _track(video_id, "download", status="done",
+                   path=str(folder_path / _VIDEO_ARCNAME), title=label)
+        else:
+            _track(video_id, "download", status="failed", error=error, title=label)
         bus.emit("video:done", {"id": video_id, "title": label, "ok": ok,
                                 "skipped": False, "error": error})
         return _video_item(info, video_id, ok=ok, skipped=False, error=error)
@@ -836,6 +854,10 @@ def channel_full(channel_url: str, options: Optional[Dict] = None, *,
                          and envelope.get("status")) else envelope.get("message")
         if video_ok:
             _mark_completed(str(output_dir), video_id)
+            _track(video_id, "download", status="done",
+                   path=str(folder_path / _VIDEO_ARCNAME), title=label)
+        else:
+            _track(video_id, "download", status="failed", error=error, title=label)
         bus.emit("video:done", {"id": video_id, "title": label, "ok": video_ok,
                                 "skipped": False, "error": error})
         return _full_item(info, video_id, video_ok=video_ok, thumb_ok=thumb_ok,
@@ -845,6 +867,7 @@ def channel_full(channel_url: str, options: Optional[Dict] = None, *,
         try:
             return worker(video_id)
         except Exception as exc:
+            _track(video_id, "download", status="failed", error=str(exc))
             bus.emit("video:done", {"id": video_id, "title": video_id, "ok": False,
                                     "skipped": False, "error": str(exc)})
             return {"videoId": video_id, "videoOk": False, "thumbOk": False,
