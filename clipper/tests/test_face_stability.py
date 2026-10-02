@@ -57,7 +57,7 @@ class TestFaceStability(unittest.TestCase):
             
         with patch.object(self.tracker, 'detect_faces_in_frame', side_effect=mock_detect):
             # Patch resize to avoid errors
-            with patch('services.face_tracker.cv2.resize') as mock_resize:
+            with patch('clipper.services.face_tracker.cv2.resize') as mock_resize:
                 mock_resize.return_value = np.zeros((100, 100, 3), dtype=np.uint8)
                 
                 processed_clip = self.tracker.track_and_crop(clip)
@@ -94,7 +94,7 @@ class TestFaceStability(unittest.TestCase):
             
             pass 
 
-    @patch('services.face_tracker.cv2.resize')
+    @patch('clipper.services.face_tracker.cv2.resize')
     def test_gap_filling_calls(self, mock_resize):
         w, h = 1920, 1080
         clip = ColorClip(size=(w, h), color=(0, 0, 0), duration=2.0)

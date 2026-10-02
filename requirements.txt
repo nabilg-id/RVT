@@ -4,13 +4,24 @@
 # Jangan naikkan batas atas ini tanpa memindahkan ke API moviepy 2.
 moviepy>=1.0.3,<2.0
 
-# Transkripsi
-faster-whisper>=1.0.0
+# Transkripsi.
+#
+# torch: pasang versi CPU, bukan build CUDA. Bobot CPU sekitar 200 MB,
+# sedangkan build default sekitar 2,5 GB, dan inferensi CTranslate2 yang
+# dipakai faster-whisper berjalan baik tanpa GPU:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
 torch>=2.0
+faster-whisper>=1.0.0
+
+# Deteksi wajah.
+#
+# mediapipe 0.10.30 dan 1.x menghapus ``mediapipe.solutions``. Pipeline ini
+# memakai ``mediapipe.tasks`` sehingga tetap jalan, tapi model BlazeFace
+# (230 KB) diunduh otomatis ke asset/ saat pertama kali dipakai.
+mediapipe>=0.10.30
 
 # Video / gambar
 opencv-python>=4.8
-mediapipe>=0.10
 numpy>=1.24
 Pillow>=10.0
 imageio-ffmpeg>=0.4.9

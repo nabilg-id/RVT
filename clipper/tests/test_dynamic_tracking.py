@@ -57,7 +57,7 @@ class TestDynamicTracking(unittest.TestCase):
         
         with patch.object(self.tracker, 'detect_faces_in_frame', side_effect=mock_detect):
             # We also need to patch cv2 inside face_tracker because it's used for the zoom-out logic
-            with patch('services.face_tracker.cv2.resize') as mock_resize:
+            with patch('clipper.services.face_tracker.cv2.resize') as mock_resize:
                 # Mock resize to return a dummy frame of target size
                 # target width = 606, height calculated dynamically
                 def side_effect_resize(src, dsize):

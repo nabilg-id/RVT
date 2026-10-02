@@ -15,7 +15,11 @@ downloads/
 clips/
 temp/
 temp_files/
-coverage/
+
+# Artefak test: PNG caption dan MP4 hasil pengujian
+tests/output/
+clipper/tests/output/
+.coverage
 htmlcov/
 .ruff_cache/
 .pytest_cache/
