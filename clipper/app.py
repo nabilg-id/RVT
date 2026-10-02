@@ -8,6 +8,7 @@ menyediakan antarmuka web, manajemen job, dan lapisan akuisisi dari RCH.
 """
 from __future__ import annotations
 
+import re
 import threading
 import webbrowser
 from pathlib import Path
@@ -361,6 +362,109 @@ def api_history():
     return jsonify(read_history())
 
 
+# ---------------------------------------------------------------------------
+# Papan Video - status per video dari ledger bersama
+# ---------------------------------------------------------------------------
+
+_VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+
+
+def _status_label(status: str) -> str:
+    return {
+        "none": "Belum",
+        "downloaded": "Sudah Download",
+        "queued": "Antri",
+        "processing": "Proses",
+        "clipped": "Sudah Clip",
+        "download_failed": "Gagal Download",
+        "clip_failed": "Gagal Clip",
+    }.get(status, status)
+
+
+@app.route("/api/videos")
+def api_videos():
+    """Semua video yang pernah terlihat, beserta status download dan clip-nya.
+
+    Disaring dan dicari di server supaya tabel tetap ringan kalau folder sudah
+    berisi ratusan video.
+    """
+    try:
+        from rch.core.tracker import list_videos, summarize
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"Ledger tidak bisa dibaca: {exc}"}), 500
+
+    status = (request.args.get("status") or "").strip()
+    query = (request.args.get("q") or "").strip().lower()
+    try:
+        limit = max(1, min(500, int(request.args.get("limit", 200))))
+    except (TypeError, ValueError):
+        limit = 200
+
+    rows = list_videos()
+    if status and status != "all":
+        rows = [r for r in rows if r["status"] == status]
+    if query:
+        # The id is compared case-insensitively too: video ids mix upper and
+        # lower case, and a user pasting one must not have to guess the casing.
+        rows = [
+            r for r in rows
+            if query in (r.get("title") or "").lower()
+            or query in r["videoId"].lower()
+        ]
+
+    counts = summarize()
+    return jsonify({
+        "videos": rows[:limit],
+        "total": len(rows),
+        "counts": counts,
+        "labels": {k: _status_label(k) for k in counts},
+    })
+
+
+@app.route("/api/videos/queue", methods=["POST"])
+def api_queue():
+    """Tandai video sebagai antri clip.
+
+    Penanda saja, tidak memicu proses: video diclip saat tombol Generate
+    ditekan, supaya tidak ada pekerjaan yang berjalan tanpa diminta.
+    """
+    return _set_queue(_body().get("videoId"), queued=True)
+
+
+@app.route("/api/videos/unqueue", methods=["POST"])
+def api_unqueue():
+    return _set_queue(_body().get("videoId"), queued=False)
+
+
+def _set_queue(video_id, *, queued: bool) -> tuple:
+    if not isinstance(video_id, str) or not _VIDEO_ID_RE.match(video_id):
+        return jsonify({"error": "videoId tidak valid."}), 400
+
+    try:
+        from rch.core.tracker import append_event, effective_status, read_state
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"Ledger tidak bisa ditulis: {exc}"}), 500
+
+    state = read_state()
+    known = state.get(video_id)
+    if known is None:
+        # Mengantre video yang belum pernah terlihat tidak akan pernah bisa
+        # dikerjakan, jadi tolak daripada membuat entri yang menggantung.
+        return jsonify({"error": "Video tidak ada di daftar."}), 404
+
+    # Mantan status queued tidak berlaku kalau klipnya sudah jalan atau selesai.
+    if not queued:
+        current = (known.get("clip") or {}).get("status")
+        if current in ("done", "running"):
+            return jsonify({
+                "error": "Clip sudah berjalan atau selesai, antrean tidak berlaku.",
+                "video": effective_status(known),
+            }), 409
+
+    append_event(video_id, "clip", status="queued" if queued else "none")
+    return jsonify({"ok": True, "video": effective_status(read_state()[video_id])})
+
+
 @app.route("/clips/<path:name>")
 def serve_clip(name: str):
     return send_from_directory(str(OUTPUT_DIR), name, conditional=True)
@@ -391,6 +495,23 @@ def create_server(host: str = RCH_HOST, port: int = RCH_PORT):
     return make_server(host, port, app)
 
 
+def backfill_ledger() -> int:
+    """Seed the video board from clips and downloads already on disk.
+
+    Called once when the GUI starts so a user who already has a collection sees
+    it on the board immediately instead of an empty table. Idempotent, and
+    wrapped because a missing or unreadable folder must not stop the server.
+    """
+    try:
+        from rch.core.tracker import backfill_from_disk
+    except Exception:  # noqa: BLE001 - tracker unavailable, board just stays empty
+        return 0
+    try:
+        return backfill_from_disk(OUTPUT_DIR.parent / "downloads", OUTPUT_DIR)
+    except Exception:  # noqa: BLE001 - never block startup on bookkeeping
+        return 0
+
+
 def run_server(host: str = RCH_HOST, port: int = RCH_PORT, open_browser: bool = True) -> None:
     """Jalankan GUI, memblokir sampai dihentikan atau ``/api/quit`` dipanggil."""
     global _LIVE_SERVER
@@ -400,6 +521,11 @@ def run_server(host: str = RCH_HOST, port: int = RCH_PORT, open_browser: bool = 
     url = f"http://{host}:{port}"
     print(f"YouTube Viral Clipper GUI: {url}")
     print(f"Output clip: {OUTPUT_DIR}")
+
+    added = backfill_ledger()
+    if added:
+        print(f"Papan video: {added} video ditemukan dari file yang sudah ada.")
+
     print("Tekan Ctrl+C untuk berhenti.")
     if open_browser:
         threading.Thread(target=lambda: webbrowser.open(url), daemon=True).start()

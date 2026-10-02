@@ -5,6 +5,7 @@
   var pollTimer = null;
   var busy = false;
   var lastLogLen = 0;
+  var STATUS_LABELS = {};
 
   function log(msg) {
     var el = $("#log");
@@ -108,17 +109,23 @@
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     setBusy(false);
     loadHistory();
+    loadBoard();
   }
 
   async function loadHistory() {
     var rows = await get("/api/history");
     var tbody = $("#historyRows");
     if (!rows || !rows.length) {
-      tbody.innerHTML = '<tr class="empty"><td colspan="6">Belum ada riwayat.</td></tr>';
+      tbody.innerHTML = '<tr class="empty"><td colspan="7">Belum ada riwayat.</td></tr>';
       return;
     }
     tbody.innerHTML = rows.map(function (r) {
       var ok = r.status === "done";
+      var video = r.videoId
+        ? '<a href="https://youtu.be/' + encodeURIComponent(r.videoId) +
+          '" target="_blank" rel="noopener" class="vid-link">' +
+          esc(r.videoId) + "</a>"
+        : '<span class="muted">-</span>';
       return "<tr>" +
         "<td>" + esc(r.timestamp) + "</td>" +
         "<td>" + esc(r.style) + "</td>" +
@@ -126,8 +133,122 @@
         "<td>" + esc(r.range) + "</td>" +
         '<td class="' + (ok ? "ok" : "fail") + '">' + (ok ? "OK" : "GAGAL") + "</td>" +
         "<td>" + esc(r.title) + "</td>" +
+        "<td>" + video + "</td>" +
         "</tr>";
     }).join("");
+  }
+
+  // -- Papan Video ---------------------------------------------------------
+
+  function statusChip(status) {
+    return '<span class="chip s-' + esc(status) + '">' +
+           esc(STATUS_LABELS[status] || status) + "</span>";
+  }
+
+  function buildFilterOptions(counts) {
+    var sel = $("#statusFilter");
+    var current = sel.value;
+    var labels = STATUS_LABELS;
+    var opts = ['<option value="all">Semua status (' +
+                ((counts.total || 0)) + ")</option>"];
+    Object.keys(counts).forEach(function (key) {
+      if (key === "total") return;
+      opts.push('<option value="' + esc(key) + '">' +
+                esc(labels[key] || key) + " (" + counts[key] + ")</option>");
+    });
+    sel.innerHTML = opts.join("");
+    sel.value = current && sel.querySelector('option[value="' + current + '"]')
+      ? current : "all";
+  }
+
+  function renderCounts(counts) {
+    var order = ["clipped", "processing", "queued", "downloaded", "none",
+                 "download_failed", "clip_failed"];
+    $("#boardCounts").innerHTML = order
+      .filter(function (k) { return counts[k]; })
+      .map(function (k) {
+        return '<span class="chip s-' + esc(k) + '">' +
+               esc(STATUS_LABELS[k] || k) + " " + counts[k] + "</span>";
+      })
+      .join("") || '<span class="muted">Belum ada video tercatat.</span>';
+  }
+
+  function renderBoard(rows) {
+    var tbody = $("#videoRows");
+    if (!rows || !rows.length) {
+      tbody.innerHTML = '<tr class="empty"><td colspan="6">Tidak ada video yang cocok.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(function (v) {
+      var clips = (v.clipFiles || []).length
+        ? v.clipFiles.map(function (name) {
+            return '<a href="/clips/' + encodeURIComponent(name) +
+                   '" target="_blank" download>' + esc(name) + "</a>";
+          }).join("<br>")
+        : '<span class="muted">-</span>';
+
+      var actions = '<button class="btn ghost small act-clip" data-id="' +
+        esc(v.videoId) + '">Isi URL</button> ';
+      if (v.status === "queued") {
+        actions += '<button class="btn ghost small act-unqueue" data-id="' +
+          esc(v.videoId) + '">Batalkan antre</button>';
+      } else if (v.status !== "clipped" && v.status !== "processing") {
+        actions += '<button class="btn ghost small act-queue" data-id="' +
+          esc(v.videoId) + '">Antrekan Clip</button>';
+      }
+
+      return "<tr>" +
+        "<td>" + statusChip(v.status) + "</td>" +
+        "<td>" + esc(v.title || "(tanpa judul)") + "</td>" +
+        '<td><a href="' + esc(v.url) + '" target="_blank" rel="noopener" class="vid-link">' +
+          esc(v.videoId) + "</a></td>" +
+        "<td>" + esc(v.downloadStatus) + "</td>" +
+        "<td>" + clips + "</td>" +
+        "<td>" + actions + "</td>" +
+        "</tr>";
+    }).join("");
+  }
+
+  async function loadBoard() {
+    var params = [];
+    var status = $("#statusFilter").value;
+    var q = $("#videoSearch").value.trim();
+    if (status && status !== "all") params.push("status=" + encodeURIComponent(status));
+    if (q) params.push("q=" + encodeURIComponent(q));
+
+    var data;
+    try {
+      data = await get("/api/videos" + (params.length ? "?" + params.join("&") : ""));
+    } catch (e) {
+      $("#videoRows").innerHTML =
+        '<tr class="empty"><td colspan="6">Papan video gagal dimuat.</td></tr>';
+      return;
+    }
+    if (data.error) {
+      $("#videoRows").innerHTML =
+        '<tr class="empty"><td colspan="6">' + esc(data.error) + "</td></tr>";
+      return;
+    }
+
+    STATUS_LABELS = data.labels || STATUS_LABELS;
+    buildFilterOptions(data.counts || {});
+    renderCounts(data.counts || {});
+    renderBoard(data.videos || []);
+  }
+
+  var searchTimer = null;
+  function queueSearch() {
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(loadBoard, 250);
+  }
+
+  async function setQueue(videoId, queued) {
+    var path = queued ? "/api/videos/queue" : "/api/videos/unqueue";
+    var r = await post(path, { videoId: videoId });
+    if (r.status >= 400) {
+      log("[!] " + (r.data.error || "gagal mengubah antrean"));
+    }
+    await loadBoard();
   }
 
   document.addEventListener("DOMContentLoaded", function () {
@@ -161,6 +282,25 @@
 
     $("#refreshHistory").addEventListener("click", loadHistory);
 
+    $("#refreshBoard").addEventListener("click", loadBoard);
+    $("#statusFilter").addEventListener("change", loadBoard);
+    $("#videoSearch").addEventListener("input", queueSearch);
+
+    // Delegasi, karena baris papan dirender ulang setiap poll.
+    $("#videoRows").addEventListener("click", function (ev) {
+      var btn = ev.target.closest("button[data-id]");
+      if (!btn) return;
+      var id = btn.getAttribute("data-id");
+      if (!id) return;
+      if (btn.classList.contains("act-queue")) { setQueue(id, true); }
+      else if (btn.classList.contains("act-unqueue")) { setQueue(id, false); }
+      else if (btn.classList.contains("act-clip")) {
+        $("#url").value = "https://www.youtube.com/watch?v=" + id;
+        $("#url").focus();
+        log("[*] URL diisi dari papan video. Tekan Generate Clip untuk lanjut.");
+      }
+    });
+
     $("#quitBtn").addEventListener("click", async function () {
       if (!confirm("Matikan server clipper?")) return;
       try { await post("/api/quit", {}); } catch (e) { /* ignore */ }
@@ -176,5 +316,6 @@
     } catch (e) { /* ignore */ }
 
     loadHistory();
+    loadBoard();
   });
 })();

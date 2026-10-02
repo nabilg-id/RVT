@@ -9,6 +9,7 @@
   --accent-2: #4f8cff;
   --ok: #35c48a;
   --fail: #f0616d;
+  --warn: #f0b429;
 }
 
 html[data-theme="light"] {
@@ -22,6 +23,7 @@ html[data-theme="light"] {
   --accent-2: #2563eb;
   --ok: #128a5c;
   --fail: #c62b3a;
+  --warn: #b57d04;
 }
 
 * { box-sizing: border-box; }
@@ -172,7 +174,48 @@ tr.empty td { text-align: center; color: var(--muted); padding: 22px; }
 td.ok { color: var(--ok); font-weight: 600; }
 td.fail { color: var(--fail); font-weight: 600; }
 
+/* -- Papan Video ---------------------------------------------------------- */
+.board-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.board-actions .search,
+.board-actions .filter {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-soft);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+}
+.board-actions .search { min-width: 200px; }
+.board-actions .search:focus,
+.board-actions .filter:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.muted { color: var(--muted); }
+.vid-link { color: var(--accent); text-decoration: none; font-variant-numeric: tabular-nums; }
+.vid-link:hover { text-decoration: underline; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; }
+.chip {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .3px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.chip.s-clipped         { background: rgba(53,196,138,.16); color: var(--ok); border-color: rgba(53,196,138,.4); }
+.chip.s-processing      { background: rgba(77,163,255,.16); color: var(--accent); border-color: rgba(77,163,255,.4); }
+.chip.s-queued          { background: rgba(240,180,41,.16); color: var(--warn); border-color: rgba(240,180,41,.4); }
+.chip.s-downloaded      { background: rgba(152,160,179,.18); color: var(--muted); border-color: var(--border); }
+.chip.s-none            { background: transparent; color: var(--muted); border-color: var(--border); }
+.chip.s-download_failed,
+.chip.s-clip_failed     { background: rgba(240,97,109,.16); color: var(--fail); border-color: rgba(240,97,109,.4); }
+
 @media (max-width: 860px) {
   .layout { grid-template-columns: 1fr; }
   .grid2 { grid-template-columns: 1fr; }
+  .board-actions { width: 100%; }
+  .board-actions .search { flex: 1; min-width: 0; }
 }

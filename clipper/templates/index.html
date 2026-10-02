@@ -84,13 +84,38 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>Waktu</th><th>Gaya</th><th>Clip</th><th>Rentang</th><th>Status</th><th>Judul</th></tr>
+            <tr><th>Waktu</th><th>Gaya</th><th>Clip</th><th>Rentang</th><th>Status</th><th>Judul</th><th>Video</th></tr>
           </thead>
           <tbody id="historyRows">
-            <tr class="empty"><td colspan="6">Belum ada riwayat.</td></tr>
+            <tr class="empty"><td colspan="7">Belum ada riwayat.</td></tr>
           </tbody>
         </table>
       </div>
+    </section>
+
+    <section class="panel wide">
+      <div class="panel-head">
+        <h2>Papan Video</h2>
+        <div class="board-actions">
+          <input id="videoSearch" class="search" type="search" placeholder="Cari judul atau ID…" autocomplete="off">
+          <select id="statusFilter" class="filter">
+            <option value="all">Semua status</option>
+          </select>
+          <button id="refreshBoard" class="btn ghost small" type="button">Segarkan</button>
+        </div>
+      </div>
+      <div id="boardCounts" class="chips" aria-live="polite"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Status</th><th>Judul</th><th>Video ID</th><th>Download</th><th>Clip</th><th>Aksi</th></tr>
+          </thead>
+          <tbody id="videoRows">
+            <tr class="empty"><td colspan="6">Belum ada video tercatat.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="hint">Status diambil dari ledger bersama <code>video-tracker.jsonl</code>. Video yang sudah ada di folder download atau di folder clip akan muncul otomatis saat pertama kali papan ini dibuka.</p>
     </section>
   </main>
 
