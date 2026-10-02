@@ -73,7 +73,8 @@ class TestPathsAreAlwaysAbsolute:
             assert value.is_absolute(), value
 
     def test_home_relative_is_expanded(self, monkeypatch):
-        c = reload_config(monkeypatch, OUTPUT_DIR="~/klip-saya")
+        # "~" already exists, so importing config does not create anything.
+        c = reload_config(monkeypatch, OUTPUT_DIR="~")
         assert "~" not in str(c.OUTPUT_DIR)
         assert c.OUTPUT_DIR.is_absolute()
 
@@ -86,46 +87,56 @@ class TestPathsAreAlwaysAbsolute:
 
 class TestDownloadRouteSurvivesRelativeConfig:
     """The end the anchoring exists for: a clip written under a relative
-    OUTPUT_DIR must still be downloadable."""
+    OUTPUT_DIR must still be downloadable.
+
+    The directory itself is redirected to tmp_path after config resolves it,
+    so the test proves the route follows OUTPUT_DIR wherever it points without
+    littering the repository.
+    """
 
     @pytest.fixture()
     def client(self, monkeypatch, tmp_path):
-        # A relative dir that lands inside the repo root's parent, so the join
-        # Flask performs cannot accidentally be right.
+        # tmp_path rather than a repo-relative name: config.py creates
+        # OUTPUT_DIR on import, so a relative value here would leave a folder
+        # in the working tree every time the suite runs.
         monkeypatch.chdir(tmp_path)
-        reload_config(monkeypatch, OUTPUT_DIR="./keluaran", TEMP_DIR="./sementara")
+        reload_config(monkeypatch,
+                      OUTPUT_DIR=str(tmp_path / "keluaran"),
+                      TEMP_DIR=str(tmp_path / "sementara"))
+
         sys.modules.pop("clipper.app", None)
         app_mod = importlib.import_module("clipper.app")
+        monkeypatch.setattr(app_mod, "OUTPUT_DIR", tmp_path / "keluaran")
         app_mod.app.config["TESTING"] = True
-        return app_mod, app_mod.app.test_client()
+        return app_mod, app_mod.app.test_client(), tmp_path / "keluaran"
 
     def test_clip_is_downloadable(self, client):
-        app_mod, http = client
-        app_mod.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        (app_mod.OUTPUT_DIR / "clip_1_90pts_x.mp4").write_bytes(b"\x00" * 4096)
+        app_mod, http, out_dir = client
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "clip_1_90pts_x.mp4").write_bytes(b"\x00" * 4096)
 
         r = http.get("/clips/clip_1_90pts_x.mp4")
-        assert r.status_code == 200, "relative OUTPUT_DIR broke the download route"
+        assert r.status_code == 200, "the download route did not follow OUTPUT_DIR"
         assert len(r.data) == 4096
 
-    def test_output_dir_is_not_below_the_package_dir(self, client):
+    def test_route_is_not_below_the_package_dir(self, client):
         """Flask would look under clipper/, so that is exactly where the output
         directory must not end up."""
-        app_mod, _ = client
+        app_mod, _, out_dir = client
         package_dir = os.path.dirname(os.path.abspath(app_mod.__file__))
-        out = os.path.abspath(str(app_mod.OUTPUT_DIR))
+        out = os.path.abspath(str(out_dir))
         assert not out.startswith(package_dir + os.sep), \
             f"{out} is inside the package dir {package_dir}"
 
     def test_traversal_still_refused(self, client):
-        app_mod, http = client
-        app_mod.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        app_mod, http, out_dir = client
+        out_dir.mkdir(parents=True, exist_ok=True)
         r = http.get("/clips/../rahasia.txt")
         assert r.status_code == 404
 
     def test_missing_file_still_404s(self, client):
-        app_mod, http = client
-        app_mod.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        app_mod, http, out_dir = client
+        out_dir.mkdir(parents=True, exist_ok=True)
         assert http.get("/clips/tidak_ada.mp4").status_code == 404
 
 
@@ -147,7 +158,11 @@ class TestNoChdirDependence:
         """video_processor imports OUTPUT_DIR by value; if the two modules can
         disagree, clips get written where the route does not look."""
         monkeypatch.chdir(tmp_path)
-        reload_config(monkeypatch, OUTPUT_DIR="./keluaran", TEMP_DIR="./s")
+        # Absolute here on purpose: the anchoring is covered above, and a
+        # repo-relative name would be created in the working tree on import.
+        reload_config(monkeypatch,
+                      OUTPUT_DIR=str(tmp_path / "keluaran"),
+                      TEMP_DIR=str(tmp_path / "s"))
         for mod in list(sys.modules):
             if mod.startswith("clipper") and mod != "clipper":
                 del sys.modules[mod]
