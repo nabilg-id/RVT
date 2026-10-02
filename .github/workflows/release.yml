@@ -69,8 +69,9 @@ jobs:
             - First run mengunduh model Whisper dan dependensi torch yang besar.
 
             ### Uji
-            1369 test, coverage 99% di luar pipeline media, hijau di
-            Linux/Windows/macOS.
+            Seluruh test hijau di Linux/Windows/macOS dengan coverage di atas
+            ambang 97%. Pipeline media (moviepy, Whisper, MediaPipe) diuji
+            terpisah terhadap stack penuh - lihat job `test` di workflow `CI`.
 
             ### Instalasi
             ```
