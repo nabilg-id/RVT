@@ -102,6 +102,9 @@ class Job:
         self._truncated = False
         self._clips_block_seen = False
         self._history_written = False
+        #: Source YouTube id, set once the job starts so the history row and the
+        #: shared ledger can both name the video a clip came from.
+        self.video_id: Optional[str] = None
 
     def claim_history(self) -> bool:
         """True sekali saja, saat job pertama kali dicatat ke riwayat."""

@@ -137,6 +137,38 @@ def _next_job_id() -> int:
         return _JOB_COUNTER
 
 
+def _clip_video_id(payload: dict) -> str | None:
+    """The source video id for a clip job, or None if the URL is unusable."""
+    try:
+        from rch.youtube.common import extract_video_id
+
+        return extract_video_id(payload.get("url") or "")
+    except Exception:  # noqa: BLE001 - tracking must never block a job
+        return None
+
+
+def _track(event: str, payload: dict, **fields) -> None:
+    """Append one clip event to the shared ledger, ignoring failures.
+
+    The ledger is observability: a clip must still run and still produce files
+    if it cannot be recorded.
+    """
+    video_id = _clip_video_id(payload)
+    if not video_id:
+        return
+    try:
+        from rch.core.tracker import append_event
+
+        append_event(video_id, event, **fields)
+    except Exception:  # noqa: BLE001 - tracking must never break a clip job
+        pass
+
+
+def _track_clip_start(job: Job, payload: dict) -> None:
+    _track("clip", payload, status="running", style=payload.get("style"))
+    job.video_id = _clip_video_id(payload)
+
+
 def _run_clip_job(job: Job, payload: dict) -> None:
     """Jalankan pipeline di thread terpisah sambil menangkap log-nya."""
     try:
@@ -155,16 +187,28 @@ def _run_clip_job(job: Job, payload: dict) -> None:
         with job._lock:
             job.outputs = [Path(o).name for o in outputs]
         job.finish()
+        if outputs:
+            _track("clip", payload, status="done", style=payload["style"],
+                   files=[Path(o).name for o in outputs], title=title)
+        else:
+            _track("clip", payload, status="failed", style=payload["style"],
+                   error="Tidak ada clip yang berhasil dibuat")
     except Exception as exc:  # noqa: BLE001 - surfaced to the UI
         job.finish(error=str(exc))
+        _track("clip", payload, status="failed", style=payload["style"],
+               error=str(exc))
 
 
 def _append_history(payload: dict, job: Job) -> None:
-    """Catat satu baris riwayat clip di ``clip-history.log``."""
+    """Catat satu baris riwayat clip di ``clip-history.log``.
+
+    ``videoId`` ditulis sebagai field terakhir supaya baris lama yang hanya
+    punya tujuh field tetap terbaca oleh :func:`read_history`.
+    """
     from datetime import datetime, timezone
 
     stamp = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
-    line = " | ".join([
+    parts = [
         stamp,
         payload["style"],
         f"clips={len(job.outputs)}",
@@ -172,7 +216,10 @@ def _append_history(payload: dict, job: Job) -> None:
         f"max={payload['maxDur']}",
         job.status,
         (job.title or "-").replace("|", "/")[:60],
-    ])
+    ]
+    video_id = getattr(job, "video_id", None) or _clip_video_id(payload)
+    parts.append(f"id={video_id}" if video_id else "id=-")
+    line = " | ".join(parts)
     try:
         TEMP_DIR.mkdir(parents=True, exist_ok=True)
         with open(TEMP_DIR / _RCH_HISTORY_FILE, "a", encoding="utf-8", newline="\n") as fh:
@@ -186,7 +233,11 @@ def _strip_prefix(value: str, prefix: str) -> str:
 
 
 def read_history(limit: int = 20) -> list:
-    """Baca riwayat clip, terbaru lebih dulu."""
+    """Baca riwayat clip, terbaru lebih dulu.
+
+    Baris lama punya tujuh field dan tidak menyebut video id; field kedelapan
+    ``id=`` hanya ada pada run yang lebih baru dan dibaca kalau ada.
+    """
     path = TEMP_DIR / _RCH_HISTORY_FILE
     if not path.exists():
         return []
@@ -197,14 +248,20 @@ def read_history(limit: int = 20) -> list:
         parts = [p.strip() for p in line.split("|")]
         if len(parts) < 7:
             continue
-        rows.append({
+        row = {
             "timestamp": parts[0],
             "style": parts[1],
             "clips": _strip_prefix(parts[2], "clips="),
             "range": f"{_strip_prefix(parts[3], 'min=')}–{_strip_prefix(parts[4], 'max=')}s",
             "status": parts[5],
             "title": parts[6],
-        })
+            "videoId": None,
+        }
+        if len(parts) > 7:
+            raw = _strip_prefix(parts[7], "id=")
+            if raw and raw != "-":
+                row["videoId"] = raw
+        rows.append(row)
     rows.reverse()
     return rows[:limit]
 
@@ -277,6 +334,8 @@ def api_clip():
     job = Job(_next_job_id(), payload)
     with _JOB_LOCK:
         _JOBS[job.id] = job
+
+    _track_clip_start(job, payload)
 
     threading.Thread(target=_run_clip_job, args=(job, payload), daemon=True).start()
     return jsonify({"jobId": job.id, "status": "running"})
