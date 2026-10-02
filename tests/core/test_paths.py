@@ -194,6 +194,116 @@ class TestFallbacks:
         assert P.default_downloads_dir().is_absolute()
 
 
+class TestShellBindingIsIsolated:
+    """The ctypes call is the only part that needs Windows, so it is isolated in
+    _shell_downloads_path and everything above it is testable anywhere."""
+
+    def test_no_ctypes_means_no_answer(self, monkeypatch):
+        import builtins
+
+        real_import = builtins.__import__
+
+        def _refuse(name, *a, **k):
+            if name == "ctypes":
+                raise ImportError("no ctypes here")
+            return real_import(name, *a, **k)
+
+        monkeypatch.setattr(builtins, "__import__", _refuse)
+        assert P._shell_downloads_path() is None
+
+    def test_windows_never_raises(self):
+        assert P._shell_downloads_path() is None or isinstance(
+            P._shell_downloads_path(), str
+        )
+
+
+class TestWindowsDecision:
+    def test_empty_answer_is_not_a_path(self, monkeypatch, tmp_path):
+        """A shell answering with nothing must not become Path('')."""
+        monkeypatch.setattr(P, "_shell_downloads_path", lambda: None)
+        assert P._windows_downloads() is None
+
+    def test_empty_string_is_rejected(self, monkeypatch):
+        monkeypatch.setattr(P, "_shell_downloads_path", lambda: "")
+        assert P._windows_downloads() is None
+
+    def test_existing_directory_is_accepted(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(P, "_shell_downloads_path",
+                            lambda: str(tmp_path))
+        assert P._windows_downloads() == tmp_path
+
+    def test_missing_directory_is_rejected(self, monkeypatch, tmp_path):
+        """OneDrive can leave a stale entry pointing nowhere."""
+        gone = tmp_path / "hilang"
+        monkeypatch.setattr(P, "_shell_downloads_path", lambda: str(gone))
+        assert P._windows_downloads() is None
+
+
+class TestXdgReadFailure:
+    def test_unreadable_config_is_not_fatal(self, fake_home, monkeypatch):
+        """A user-dirs.dirs we cannot read must fall through to ~/Downloads."""
+        config = fake_home / ".config"
+        config.mkdir()
+        config_file = config / "user-dirs.dirs"
+        config_file.write_text('XDG_DOWNLOAD_DIR="$HOME/Unduhan"\n',
+                               encoding="utf-8")
+
+        real_read = Path.read_text
+
+        def _boom(self, *a, **k):
+            if self.name == "user-dirs.dirs":
+                raise OSError("permission denied")
+            return real_read(self, *a, **k)
+
+        monkeypatch.setattr(Path, "read_text", _boom)
+        assert P._linux_xdg_downloads() is None
+
+
+class TestCandidateLoop:
+    def test_a_failing_candidate_does_not_stop_the_search(
+        self, fake_home, monkeypatch, no_override
+    ):
+        monkeypatch.setattr(P.sys, "platform", "linux")
+
+        calls = []
+
+        def _first():
+            calls.append("xdg")
+            raise OSError("boom")
+
+        def _second():
+            calls.append("home")
+            return fake_home / "Downloads"
+
+        monkeypatch.setattr(P, "_linux_xdg_downloads", _first)
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
+
+        assert P.default_downloads_dir() == fake_home / "Downloads"
+        assert calls == ["xdg"]
+
+    def test_a_probe_returning_none_is_skipped(self, tmp_path, monkeypatch,
+                                              no_override):
+        monkeypatch.setattr(P.sys, "platform", "win32")
+        monkeypatch.setattr(P, "_windows_downloads", lambda: None)
+        monkeypatch.delenv("USERPROFILE", raising=False)
+        monkeypatch.setattr(Path, "home", classmethod(
+            lambda cls: tmp_path / "nope"))
+
+        result = P.default_downloads_dir()
+        assert result.is_absolute()
+        assert result == REPO_ROOT / "downloads"
+
+    def test_windows_without_userprofile_falls_back(self, monkeypatch,
+                                                    no_override, tmp_path):
+        monkeypatch.setattr(P.sys, "platform", "win32")
+        monkeypatch.setattr(P, "_windows_downloads", lambda: None)
+        monkeypatch.delenv("USERPROFILE", raising=False)
+        monkeypatch.setattr(Path, "home", classmethod(
+            lambda cls: tmp_path / "nope"))
+
+        assert P.default_downloads_dir() == REPO_ROOT / "downloads"
+
+
 class TestEnsureDir:
     def test_creates_the_directory(self, tmp_path):
         target = tmp_path / "a" / "b"

@@ -52,7 +52,23 @@ def _windows_downloads() -> Path | None:
     """Ask the shell for the real Downloads folder.
 
     ``SHGetKnownFolderPath`` is the supported way to resolve a known folder, and
-    the only one that follows OneDrive redirection.
+    the only one that follows OneDrive redirection. The ctypes binding lives in
+    :func:`_shell_downloads_path` so this decision can be tested on any
+    platform and on CI, where the shell is never called.
+    """
+    raw = _shell_downloads_path()
+    if not raw:
+        return None
+    path = Path(raw)
+    return path if path.is_dir() else None
+
+
+def _shell_downloads_path() -> str | None:
+    """Resolve FOLDERID_Downloads to a path string, or None if unavailable.
+
+    Returns None rather than raising on every failure mode: not Windows, no
+    ctypes, an unregistered GUID, a shell that refuses, or an empty answer.
+    Every caller has a working fallback.
     """
     try:
         import ctypes
@@ -86,16 +102,11 @@ def _windows_downloads() -> Path | None:
         ) != 0:
             return None
         try:
-            value = out.value
+            return out.value
         finally:
             ole32.CoTaskMemFree(out)
     except Exception:  # noqa: BLE001 - any shell failure falls through
         return None
-
-    if not value:
-        return None
-    path = Path(value)
-    return path if path.is_dir() else None
 
 
 def _linux_xdg_downloads() -> Path | None:

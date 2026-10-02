@@ -291,6 +291,30 @@ def _iter_download_folders(downloads_dir: Path) -> Iterable[tuple]:
             yield video_id, folder
 
 
+def _id_from_link(text: str) -> Optional[str]:
+    """Pull the video id out of either link form RCH has written.
+
+    ``https://youtu.be/<id>`` is what ``watch_url`` produces, but a hand-edited
+    or older link.txt may hold a full ``watch?v=<id>&t=30s`` URL, so both are
+    accepted rather than only the one the writer happens to emit today.
+    """
+    raw = str(text).strip()
+    if not raw:
+        return None
+
+    tail = raw.rsplit("/", 1)[-1]
+    if is_video_id(tail):
+        return tail
+
+    query = raw.split("?", 1)[1] if "?" in raw else ""
+    for part in query.split("&"):
+        if part.startswith("v=") and is_video_id(part[2:]):
+            return part[2:]
+
+    tail = tail.split("?", 1)[0]
+    return tail if is_video_id(tail) else None
+
+
 def _video_id_from_folder(folder: Path) -> Optional[str]:
     """Read the id from ``metadata.json``, or fall back to the legacy
     ``link.txt``. Both layouts are supported on purpose: this is about to be
@@ -309,12 +333,9 @@ def _video_id_from_folder(folder: Path) -> Optional[str]:
     link = folder / "link.txt"
     if link.is_file():
         try:
-            text = link.read_text(encoding="utf-8").strip()
+            return _id_from_link(link.read_text(encoding="utf-8"))
         except OSError:
             return None
-        tail = text.rsplit("/", 1)[-1].split("?")[0]
-        if is_video_id(tail):
-            return tail
     return None
 
 
@@ -324,15 +345,18 @@ def backfill_from_disk(
 ) -> int:
     """Seed the ledger from files already on disk. Returns videos recorded.
 
-    Idempotent: a video already known is left alone rather than re-recorded, so
-    running this on every start does not churn the log or rewind a real status.
+    Idempotent, and additive per section rather than per video: a video already
+    known from a download still gets its existing clips recorded, because
+    "downloaded" on the board while the MP4s sit in clips/ would be a lie.
+    What it will not do is rewind a status that is already recorded.
     """
-    known = read_state()
+    state = read_state()
     added = 0
 
     if downloads_dir is not None:
         for video_id, folder in _iter_download_folders(Path(downloads_dir)):
-            if video_id in known:
+            recorded = (state.get(video_id, {}).get("download") or {}).get("status")
+            if recorded in ("done", "failed"):
                 continue
             title = None
             meta = folder / "metadata.json"
@@ -354,12 +378,11 @@ def backfill_from_disk(
                 if not match:
                     continue
                 video_id = match.group("video_id")
-                if video_id in known:
+                already = (state.get(video_id, {}).get("clip") or {}).get("files")
+                if already:
                     continue
-                existing = known.get(video_id, {}).get("clip", {}).get("files") or []
                 if append_event(video_id, "clip", status="done",
-                                files=[*existing, clip.name],
-                                source="backfill"):
+                                files=[clip.name], source="backfill"):
                     added += 1
 
     return added

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -422,6 +423,138 @@ class TestCompact:
         ledger.write_text("", encoding="utf-8")
         assert T.compact() == 0
         assert ledger.read_text(encoding="utf-8") == ""
+
+
+class TestUnreadableInputs:
+    """Every read path degrades to less data rather than raising."""
+
+    def test_read_state_of_a_directory_returns_empty(self, tmp_path, ledger):
+        ledger.mkdir()
+        assert T.read_state(ledger) == {}
+
+    def test_read_state_ignores_an_oserror(self, tmp_path, monkeypatch, ledger):
+        ledger.write_text('{"videoId": "dQw4w9WgXcQ"}\n', encoding="utf-8")
+
+        def _boom(self, *a, **k):
+            raise OSError("permission denied")
+
+        monkeypatch.setattr(type(ledger), "read_text", _boom)
+        assert T.read_state(ledger) == {}
+
+    def test_unreadable_link_txt_is_ignored(self, tmp_path, ledger):
+        _make_download_folder(tmp_path, "satu", VIDEO_ID, sidecar="link.txt")
+        real_read = Path.read_text
+
+        def _boom(self, *a, **k):
+            if self.name == "link.txt":
+                raise OSError("permission denied")
+            return real_read(self, *a, **k)
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(Path, "read_text", _boom)
+            T.backfill_from_disk(tmp_path, None)
+        assert VIDEO_ID not in T.read_state()
+
+    def test_folder_without_any_id_source_is_skipped(self, tmp_path, ledger):
+        folder = tmp_path / "tanpa-id"
+        folder.mkdir()
+        (folder / "video.mp4").write_bytes(b"\x00")
+        T.backfill_from_disk(tmp_path, None)
+        assert T.read_state() == {}
+
+    def test_link_txt_with_a_non_id_is_skipped(self, tmp_path, ledger):
+        folder = _make_download_folder(tmp_path, "aneh", VIDEO_ID)
+        (folder / "link.txt").write_text("https://example.com/watch",
+                                         encoding="utf-8")
+        T.backfill_from_disk(tmp_path, None)
+        assert T.read_state() == {}
+
+    def test_link_txt_with_query_string_still_yields_the_id(self, tmp_path, ledger):
+        folder = _make_download_folder(tmp_path, "query", VIDEO_ID)
+        (folder / "link.txt").write_text(
+            f"https://www.youtube.com/watch?v={VIDEO_ID}&t=30s\n",
+            encoding="utf-8")
+        T.backfill_from_disk(tmp_path, None)
+        assert VIDEO_ID in T.read_state()
+
+
+class TestSeenEvent:
+    def test_seen_records_a_timestamp_without_touching_a_section(self, ledger):
+        T.append_event(VIDEO_ID, "seen")
+        entry = T.read_state()[VIDEO_ID]
+        assert entry["seenAt"]
+        assert entry["download"] == {}
+        assert entry["clip"] == {}
+
+    def test_seen_does_not_reset_an_existing_download(self, ledger):
+        T.append_event(VIDEO_ID, "download", status="done", path="v.mp4")
+        T.append_event(VIDEO_ID, "seen")
+        assert T.read_state()[VIDEO_ID]["download"]["status"] == "done"
+
+    def test_unknown_event_type_is_ignored(self, ledger):
+        T.append_event(VIDEO_ID, "telemetry", status="whatever")
+        assert T.read_state()[VIDEO_ID]["clip"] == {}
+
+
+class TestBackfillAfterExistingState:
+    """Backfill must add what is missing without touching what is recorded."""
+
+    def test_clip_added_for_a_video_that_only_has_a_download(
+        self, tmp_path, ledger
+    ):
+        _make_download_folder(tmp_path, "satu", VIDEO_ID)
+        clips = tmp_path / "klips"
+        clips.mkdir()
+        (clips / f"clip_1_88pts_{VIDEO_ID}.mp4").write_bytes(b"\x00")
+
+        # Simulate the download already being recorded, with no clip files.
+        T.append_event(VIDEO_ID, "download", status="done", path="v.mp4")
+
+        T.backfill_from_disk(None, clips)
+        view = T.list_videos()[0]
+        assert view["clipFiles"] == [f"clip_1_88pts_{VIDEO_ID}.mp4"]
+
+    def test_metadata_title_is_used_when_present(self, tmp_path, ledger):
+        _make_download_folder(tmp_path, "baru", VIDEO_ID,
+                              sidecar="metadata.json")
+        T.backfill_from_disk(tmp_path, None)
+        assert T.read_state()[VIDEO_ID]["title"] == f"Titel {VIDEO_ID}"
+
+    def test_corrupt_metadata_still_records_the_download(self, tmp_path, ledger):
+        folder = _make_download_folder(tmp_path, "rusak", VIDEO_ID)
+        (folder / "metadata.json").write_text("{bukan json", encoding="utf-8")
+        T.backfill_from_disk(tmp_path, None)
+        assert T.read_state()[VIDEO_ID]["download"]["status"] == "done"
+
+
+class TestCompactFailure:
+    def test_an_unwritable_target_returns_zero(self, tmp_path):
+        target = tmp_path / "t.jsonl"
+        target.write_text(
+            '{"v":1,"ts":"x","videoId":"' + VIDEO_ID + '",'
+            '"event":"download","status":"done"}\n',
+            encoding="utf-8",
+        )
+
+        def _boom(self, other):
+            raise OSError("read-only file system")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(Path, "replace", _boom)
+            assert T.compact(target) == 0
+
+    def test_the_original_is_left_intact_when_compact_fails(self, ledger):
+        T.append_event(VIDEO_ID, "download", status="done", title="Judul")
+        before = ledger.read_text(encoding="utf-8")
+
+        def _boom(self, other):
+            raise OSError("read-only file system")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(Path, "replace", _boom)
+            T.compact(ledger)
+
+        assert ledger.read_text(encoding="utf-8") == before
 
 
 class TestNoWorkingTreeWrites:
