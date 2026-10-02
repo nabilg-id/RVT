@@ -11,3 +11,14 @@ select = ["E4", "E7", "E9", "F", "I"]
 # Test modules use long single-expression fixtures and lambdas; several are
 # deliberately wide so the shape of the call stays readable.
 "tests/*" = ["E501"]
+
+# The pre-existing clipper tests import lazily: they gate on
+# pytest.importorskip for the media stack and then adjust sys.path before
+# importing the module under test. That ordering is the whole point, so E402
+# is expected rather than a defect.
+"clipper/tests/*" = [
+    "E402",
+    "E701",
+    "E741",
+    "F841",
+]

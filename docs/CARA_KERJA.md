@@ -1,9 +1,13 @@
-# Cara Kerja Ridikc Content Harvester
+# Cara Kerja Pustaka RCH
 
-Dokumen ini menjelaskan arsitektur, alur kerja, dan cara pengujian **Ridikc Content Harvester** untuk tim R&D.
+Dokumen ini menjelaskan arsitektur, alur kerja, dan cara pengujian pustaka
+**RCH** (`rch/`) — lapisan akuisisi metadata, thumbnail, konfigurasi, dan
+riwayat.
 
-> Dokumen ini menjelaskan versi Python yang aktif. Riwayat proyek ditulis ulang
-> penuh ke Python pada Juli 2026, jadi tidak ada sisa kode Node.js di repo ini.
+> Untuk generator clip viral, lihat [`CLIPPER.md`](CLIPPER.md).
+
+> Riwayat proyek ditulis ulang penuh ke Python pada Juli 2026, jadi tidak ada
+> sisa kode Node.js di repo ini.
 
 ---
 

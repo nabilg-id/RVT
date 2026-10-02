@@ -1,22 +1,19 @@
 #!/usr/bin/env bash
-# Ridikc Content Harvester - installer macOS / Linux
-# Memeriksa Python, memasang dependency, yt-dlp, dan membuat shortcut desktop.
+# Ridikc Video Toolkit - installer macOS / Linux
 set -euo pipefail
 cd "$(dirname "$0")"
 
 echo "============================================"
-echo " Ridikc Content Harvester - Setup"
+echo " Ridikc Video Toolkit - Setup"
 echo "============================================"
 echo
 
 PY="python3"
-if ! command -v python3 >/dev/null 2>&1; then
-  PY="python"
-fi
+command -v python3 >/dev/null 2>&1 || PY="python"
 
 if ! command -v "$PY" >/dev/null 2>&1; then
   echo "[1/4] Python tidak ditemukan."
-  echo "  macOS : brew install python@3.12   (atau unduh dari python.org)"
+  echo "  macOS : brew install python@3.12"
   echo "  Linux : sudo apt install python3 python3-pip"
   exit 1
 fi
@@ -29,35 +26,34 @@ fi
 echo "[1/4] $("$PY" --version) - OK"
 echo
 
-echo "[2/4] Memasang dependency dari requirements.txt..."
+echo "[2/4] Memasang dependency dasar + pytest..."
 "$PY" -m pip install --upgrade pip --quiet
-"$PY" -m pip install -r requirements.txt
+"$PY" -m pip install -r requirements-dev.txt
 echo
 
-echo "[3/4] Memperbarui yt-dlp ke versi terbaru..."
-"$PY" -m pip install --upgrade yt-dlp --quiet
-"$PY" -m yt_dlp --version >/dev/null 2>&1 \
-  && echo "yt-dlp - OK" \
-  || echo "[PERINGATAN] yt-dlp tidak terverifikasi."
+echo "[3/4] Memasang dependensi clip (torch, moviepy, whisper, mediapipe)."
+echo "      Ini besar - mungkin perlu 15-30 menit dan ~3 GB disk."
+echo "      Tekan Ctrl+C untuk melewati dan hanya memakai mode ringan."
+"$PY" -m pip install -r requirements.txt || \
+  echo "[PERINGATAN] Dependensi clip gagal; pipeline clip tidak akan jalan."
 echo
 
-echo "[4/4] Membuat launcher di Desktop..."
+echo "[4/4] Membuat launcher..."
 if [ "$(uname)" = "Darwin" ]; then
-  DESKTOP="$HOME/Desktop"
-  TARGET="$DESKTOP/RCH-GUI.command"
-  mkdir -p "$DESKTOP"
-  cp launchers/RCH-GUI.command "$TARGET"
-  chmod +x "$TARGET" launchers/rch-gui.sh
+  TARGET="$HOME/Desktop/VCLIP-GUI.command"
+  mkdir -p "$HOME/Desktop"
+  cp launchers/VCLIP.command "$TARGET"
+  chmod +x "$TARGET" launchers/vclip.sh
   echo "Launcher: $TARGET"
   echo "Catatan: klik pertama kali akan minta konfirmasi Gatekeeper."
 else
-  chmod +x launchers/rch-gui.sh
-  echo "Launcher: $(pwd)/launchers/rch-gui.sh"
-  echo " Tambahkan ke menu aplikasi sistem Anda bila diinginkan."
+  chmod +x launchers/vclip.sh
+  echo "Launcher: $(pwd)/launchers/vclip.sh"
 fi
 echo
 
 echo "============================================"
-echo " Selesai. Jalankan launchers/rch-gui.sh"
-echo " GUI terbuka di http://127.0.0.1:8787"
+echo " Selesai. Jalankan launchers/vclip.sh"
+echo " GUI: http://127.0.0.1:8787"
+echo " CLI: $PY -m clipper.main"
 echo "============================================"

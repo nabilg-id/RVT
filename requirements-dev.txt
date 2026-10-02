@@ -1,0 +1,17 @@
+# Dependensi ringan untuk CI dan developer yang hanya ingin menjalankan test.
+#
+# requirements.txt sengaja tidak dipakai di sini: torch + faster-whisper +
+# mediapipe akan membuat runner CI jauh lebih lambat dan besar, sementara
+# pipeline clip di-exclude dari gerbang coverage (lihat [tool.coverage.run]
+# di pyproject.toml). Test pipeline clip otomatis di-skip lewat
+# pytest.importorskip bila dependensi berat tidak tersedia.
+
+flask>=3.0
+click>=8.1
+requests>=2.31
+beautifulsoup4>=4.12
+yt-dlp>=2026.8.19
+python-dotenv>=1.0
+
+pytest>=8.0
+pytest-cov>=4.1

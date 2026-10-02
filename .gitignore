@@ -4,15 +4,24 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-.env
-downloads/
-node_modules/
-coverage/
-.coverage
-.pytest_cache/
-.ruff_cache/
-htmlcov/
-.rch-checkpoint.json
+*.egg
 
-# Tidak sengaja terlacak oleh filter-repo saatrewrite; jangan pernah di-commit.
+# Rahasia
+.env
+cookies.txt
+
+# Output aplikasi
+downloads/
+clips/
+temp/
+temp_files/
+coverage/
+htmlcov/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+.vscode/
+
+# Sisa proyek Node.js lama; tidak pernah di-commit
+node_modules/
 legacy-node/

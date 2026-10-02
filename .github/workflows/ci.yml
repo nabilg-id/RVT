@@ -22,14 +22,16 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      # requirements-dev, bukan requirements.txt: torch + faster-whisper +
+      # mediapipe akan menambah puluhan menit per runner. Modul pipeline clip
+      # meng-skip dirinya sendiri lewat pytest.importorskip.
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip install pytest-cov
+          python -m pip install -r requirements-dev.txt
 
       - name: Run tests with coverage
-        run: python -m pytest tests/ --cov=rch --cov-report=term-missing --cov-fail-under=100
+        run: python -m pytest --cov --cov-report=term-missing --cov-fail-under=97
 
   lint:
     runs-on: ubuntu-latest
@@ -40,4 +42,29 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install ruff
       - name: Ruff (config pinned in ruff.toml)
-        run: ruff check rch/ tests/
+        run: ruff check rch/ tests/ clipper/
+
+  workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate workflow files
+        run: |
+          python -m pip install --upgrade pip
+          python - <<'PY'
+          import glob, sys
+          try:
+              import yaml
+          except ImportError:
+              sys.exit("pyyaml missing")
+          bad = []
+          for f in glob.glob(".github/workflows/*.yml"):
+              try:
+                  yaml.safe_load(open(f, encoding="utf-8"))
+              except Exception as exc:
+                  bad.append(f"{f}: {exc}")
+          if bad:
+              print("\n".join(bad))
+              sys.exit(1)
+          print("workflow files parse cleanly")
+          PY

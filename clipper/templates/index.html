@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>YouTube Viral Clipper</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">VC</span>
+      <div>
+        <h1>YouTube Viral Clipper</h1>
+        <p class="sub">Tempel URL, pilih gaya, generate clip viral</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button id="themeToggle" class="btn ghost" type="button" title="Ganti tema">&#9681;</button>
+      <button id="quitBtn" class="btn ghost" type="button">Keluar</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel">
+      <h2>Sumber</h2>
+      <label for="url">URL Video YouTube</label>
+      <input id="url" type="text" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
+      <button id="previewBtn" class="btn ghost full" type="button">Cek Info</button>
+
+      <div id="preview" class="preview" hidden>
+        <img id="previewThumb" alt="Thumbnail video">
+        <div class="preview-body">
+          <p id="previewTitle" class="preview-title"></p>
+          <p id="previewMeta" class="preview-meta"></p>
+        </div>
+      </div>
+
+      <h2 class="section-gap">Pengaturan Clip</h2>
+      <label for="numClips">Jumlah Clip</label>
+      <input id="numClips" type="number" min="1" max="20" value="{{ defaults.numClips }}">
+
+      <div class="grid2">
+        <div>
+          <label for="minDur">Durasi Min (detik)</label>
+          <input id="minDur" type="number" min="5" max="600" value="{{ defaults.minDur }}">
+        </div>
+        <div>
+          <label for="maxDur">Durasi Maks (detik)</label>
+          <input id="maxDur" type="number" min="5" max="600" value="{{ defaults.maxDur }}">
+        </div>
+      </div>
+
+      <label for="style">Gaya Caption</label>
+      <select id="style">
+        {% for s in styles %}
+        <option value="{{ s.key }}" {% if s.key == defaults.style %}selected{% endif %}>{{ s.name }}</option>
+        {% endfor %}
+      </select>
+
+      <button id="generateBtn" class="btn primary full big" type="button">Generate Clip</button>
+      <p class="hint">Output: <code>{{ output_dir }}</code></p>
+    </section>
+
+    <section class="panel">
+      <h2>Progres</h2>
+      <div class="progress-wrap">
+        <div class="progress"><div id="bar" class="bar"></div></div>
+        <span id="percent" class="percent">0%</span>
+      </div>
+      <p id="phase" class="phase">Siap.</p>
+      <pre id="log" class="log" aria-live="polite"></pre>
+      <div id="results" class="results" hidden>
+        <h3>Clip dihasilkan</h3>
+        <ul id="resultList"></ul>
+      </div>
+    </section>
+
+    <section class="panel wide">
+      <div class="panel-head">
+        <h2>Riwayat</h2>
+        <button id="refreshHistory" class="btn ghost small" type="button">Segarkan</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Waktu</th><th>Gaya</th><th>Clip</th><th>Rentang</th><th>Status</th><th>Judul</th></tr>
+          </thead>
+          <tbody id="historyRows">
+            <tr class="empty"><td colspan="6">Belum ada riwayat.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

@@ -1,6 +1,33 @@
-requests>=2.31.0
-beautifulsoup4>=4.12.0
-yt-dlp>=2026.08.19
-flask>=3.0.0
-click>=8.1.0
-pytest>=8.0.0
+# RCH + YouTube Viral Clipper
+
+# moviepy 2.x menghapus modul moviepy.editor yang dipakai pipeline clip.
+# Jangan naikkan batas atas ini tanpa memindahkan ke API moviepy 2.
+moviepy>=1.0.3,<2.0
+
+# Transkripsi
+faster-whisper>=1.0.0
+torch>=2.0
+
+# Video / gambar
+opencv-python>=4.8
+mediapipe>=0.10
+numpy>=1.24
+Pillow>=10.0
+imageio-ffmpeg>=0.4.9
+
+# Pemilihan momen AI
+openai>=1.0
+
+# YouTube
+yt-dlp>=2026.8.19
+requests>=2.31
+beautifulsoup4>=4.12
+
+# Antarmuka
+flask>=3.0
+click>=8.1
+python-dotenv>=1.0
+
+# Uji
+pytest>=8.0
+pytest-cov>=4.1

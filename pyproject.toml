@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ridikc-video-toolkit"
+version = "2.1.0"
+description = "YouTube clip generator with a local web GUI, plus the RCH harvesting library."
+requires-python = ">=3.10"
+dependencies = [
+    "moviepy>=1.0.3,<2.0",
+    "faster-whisper>=1.0.0",
+    "torch>=2.0",
+    "opencv-python>=4.8",
+    "mediapipe>=0.10",
+    "numpy>=1.24",
+    "Pillow>=10.0",
+    "imageio-ffmpeg>=0.4.9",
+    "openai>=1.0",
+    "yt-dlp>=2026.8.19",
+    "requests>=2.31",
+    "beautifulsoup4>=4.12",
+    "flask>=3.0",
+    "click>=8.1",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0", "pytest-cov>=4.1"]
+
+[project.scripts]
+rch = "rch.cli:main"
+vclip = "clipper.app:run_server"
+
+[tool.setuptools]
+packages = ["rch", "rch.core", "rch.web", "rch.youtube", "clipper",
+            "clipper.services", "clipper.styles", "clipper.utils"]
+
+[tool.setuptools.package-data]
+clipper = ["templates/*.html", "static/*"]
+
+[tool.coverage.run]
+branch = true
+source = ["rch", "clipper"]
+# Modul pipeline media tidak bisa diuji di runner CI: butuh torch (~2 GB),
+# faster-whisper, mediapipe, dan moviepy 1.x yang sengaja tidak dipasang di
+# sana. Test-nya ada di clipper/tests/ dan otomatis di-skip lewat
+# importorskip bila dependensi belum ada.
+omit = [
+    "clipper/services/*",
+    "clipper/tests/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+

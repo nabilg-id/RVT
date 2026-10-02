@@ -1,6 +1,9 @@
-# Panduan Install & Penggunaan (untuk Tim)
+# Panduan Install & Penggunaan RCH (untuk Tim)
 
-Dokumen ini berisi cara install dan pakai **Ridikc Content Harvester (RCH)** secara praktis, tanpa perlu menulis kode.
+Dokumen ini berisi cara install dan pakai pustaka **RCH** — lapisan akuisisi
+metadata, thumbnail, dan channel/playlist — tanpa perlu menulis kode.
+
+> Untuk generator clip viral, lihat [`CLIPPER.md`](CLIPPER.md).
 
 > Perintah `rch` adalah CLI Python. Semua perintah juga bisa dijalankan tanpa
 > instalasi global dengan diawali `python -m rch`.
