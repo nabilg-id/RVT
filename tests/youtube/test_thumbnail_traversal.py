@@ -32,18 +32,62 @@ def _download(tmp_path, filename, size="maxresdefault"):
 
 
 class TestFilenameCannotEscapeOutputDir:
+    """The invariant: nothing is ever written outside ``output_dir``.
+
+    Whether a given string is *rejected* or merely *neutralised* depends on
+    the platform, because backslash is a legal filename character on POSIX but
+    a separator on Windows. ``..\\..\\pwned.jpg`` is one odd filename on Linux
+    and a traversal on Windows. Both outcomes are safe; the property under
+    test is containment, so that is what is asserted everywhere.
+    """
+
+    HOSTILE = [
+        "../../pwned.jpg",
+        "../pwned.jpg",
+        "..\\..\\pwned.jpg",
+        "..\\pwned.jpg",
+        "/etc/pwned.jpg",
+        "a/../../pwned.jpg",
+        "....//....//pwned.jpg",
+        "./../pwned.jpg",
+    ]
+
+    @pytest.mark.parametrize("hostile", HOSTILE)
+    def test_nothing_is_written_outside_output_dir(self, tmp_path, hostile):
+        sandbox = tmp_path / "work"
+        out = sandbox / "downloads"
+        out.mkdir(parents=True)
+
+        download_thumbnail(
+            VIDEO_URL,
+            filename=hostile,
+            output_dir=str(out),
+            http_get=FAKE,
+        )
+
+        strays = [
+            p for p in sandbox.rglob("*")
+            if p.is_file() and p.resolve().parent != out.resolve()
+        ]
+        assert not strays, f"{hostile!r} wrote outside output_dir: {strays}"
+
     @pytest.mark.parametrize(
         "hostile",
         [
             "../../pwned.jpg",
             "../pwned.jpg",
-            "..\\..\\pwned.jpg",
             "/etc/pwned.jpg",
             "a/../../pwned.jpg",
-            "....//....//pwned.jpg",
+            "./../pwned.jpg",
+            "sub/dir/pwned.jpg",
         ],
     )
-    def test_traversal_is_refused_and_nothing_is_written(self, tmp_path, hostile):
+    def test_traversal_is_refused_not_silently_rewritten(self, tmp_path, hostile):
+        """A name that traverses is refused, so the caller learns it was dropped.
+
+        Every case here traverses on POSIX *and* Windows, so the refusal is
+        platform-independent.
+        """
         sandbox = tmp_path / "work"
         out = sandbox / "downloads"
         out.mkdir(parents=True)
@@ -57,17 +101,7 @@ class TestFilenameCannotEscapeOutputDir:
 
         assert result["status"] is False
         assert "filename" in result["message"].lower()
-        assert not [p for p in tmp_path.rglob("*") if p.is_file()]
-
-    def test_nothing_is_written_outside_the_sandbox(self, tmp_path):
-        sandbox = tmp_path / "work"
-        out = sandbox / "downloads"
-        out.mkdir(parents=True)
-
-        _download(sandbox, "../../pwned.jpg")
-
-        written = [p for p in tmp_path.rglob("*") if p.is_file()]
-        assert not written, f"wrote outside output_dir: {written}"
+        assert not [p for p in sandbox.rglob("*") if p.is_file()]
 
     def test_absolute_filename_cannot_overwrite_an_existing_file(self, tmp_path):
         sandbox = tmp_path / "work"
