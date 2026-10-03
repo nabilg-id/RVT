@@ -54,28 +54,57 @@ jobs:
           body: |
             ## Ridikc Video Toolkit ${{ github.ref_name }}
 
-            Generator clip viral YouTube dengan GUI web lokal.
+            Dua alat dalam satu proses: pemotong clip viral, dan pengunduh
+            channel YouTube.
 
             ### Isi
-            - **Clipper:** tempel URL di browser, pilih gaya caption, generate
-              clip. Pilih momen lewat AI (OpenRouter), transkripsi Whisper,
-              face tracking, dan caption kata-per-kata.
-            - **RCH:** pustaka akuisisi di backend - metadata, thumbnail,
-              konfigurasi, dan riwayat.
+
+            - **Clipper** (`/`): tempel URL di browser, pilih gaya caption,
+              generate clip. Pilih momen lewat AI (OpenRouter), transkripsi
+              Whisper, face tracking, caption kata-per-kata.
+            - **Downloader** (`/download): unduh video, thumbnail, dan metadata
+              channel, lengkap dengan `metadata.json` per video dan satu
+              `manifest.json` untuk seluruh channel.
+
+            Keduanya satu aplikasi web di `127.0.0.1:8787`, berbagi satu
+            registry job — jadi status clip dan status download terbaca dari
+            `/api/status/<id>` yang sama.
+
+            ### CLI tetap terpisah
+            ```
+              rch channel-full <url>   # unduh channel
+              rch video <url>          # unduh satu video
+              rch web                  # jalankan GUI
+              vclip                    # alias GUI
+            ```
+
+            ### Yang berubah dari 2.1.1
+            - RCH dan Clipper digabung jadi **satu aplikasi**. Modul
+              `rch/web` dihapus; halamannya jadi `/download`.
+            - **Satu jalur download.** Yunyahan video, batch, dan video tunggal
+              kini memakai satu implementasi yt-dlp yang sama.
+            - **Metadata JSON.** `metadata.json` per video menggantikan
+              `deskripsi.txt` + `link.txt`. `report.json` dan `history.jsonl`
+              menggantikan `report.txt` dan `history.log`.
+              Berkas lama masih dibaca, jadi arsip run sebelumnya tetap terbaca.
+            - Batch punya isolasi error dan checkpoint: satu video mati tidak
+              menghentikan channel, dan run yang terputus dilanjutkan bukan
+              diulang.
 
             ### Yang perlu diperhatikan
             - Butuh **Python 3.10+** dan **moviepy 1.x** (`moviepy.editor`
               dihapus di moviepy 2.x).
             - First run mengunduh model Whisper dan dependensi torch yang besar.
+            - Butuh **yt-dlp** dan **Node.js** atau runtime JS lain di PATH;
+              tanpa itu beberapa video akan gagal diformat.
 
             ### Uji
             Seluruh test hijau di Linux/Windows/macOS dengan coverage di atas
-            ambang 97%. Pipeline media (moviepy, Whisper, MediaPipe) diuji
-            terpisah terhadap stack penuh - lihat job `test` di workflow `CI`.
+            ambang 97%. Suite menolak menyentuh jaringan sungguhan, jadi
+            menjalankan test tidak pernah contacting YouTube.
 
             ### Instalasi
             ```
               pip install -r requirements.txt
-              python -m clipper.app        # GUI
-              python -m clipper.main       # CLI
+              python -m clipper.app        # GUI: / dan /download
             ```
