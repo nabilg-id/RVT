@@ -422,6 +422,18 @@ def index() -> str:
     )
 
 
+@app.route("/download")
+def download_page() -> str:
+    """The harvester's page, kept as it was rather than merged into the markup.
+
+    It is a working interface for a different job - downloading rather than
+    clipping - so rewriting it into the clipper's layout would have cost more
+    than it gained. Only its asset names and the one API path it calls had to
+    change.
+    """
+    return render_template("download.html", output_dir=DEFAULT_OUT)
+
+
 @app.route("/api/styles")
 def api_styles():
     return jsonify([{"key": k, "name": v["name"]} for k, v in CAPTION_STYLES.items()])
