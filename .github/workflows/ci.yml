@@ -41,8 +41,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install ruff
+      # conftest.py ikut di-lint: guard jaringan dan working-tree tinggal di
+      # sana, jadi file ini bukan lagi sekadar fixture.
       - name: Ruff (config pinned in ruff.toml)
-        run: ruff check rch/ tests/ clipper/
+        run: ruff check rch/ tests/ clipper/ conftest.py
 
   workflows:
     runs-on: ubuntu-latest
