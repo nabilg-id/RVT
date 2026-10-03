@@ -237,6 +237,47 @@ class TestFinishedIds:
         assert finished_ids(reg) == {1}
 
 
+class TestMixedRegistry:
+    """One registry holds both download records and clip job objects.
+
+    The prune and finished-set walks were written when only dicts lived here,
+    and assuming the dict shape crashed the moment a clip Job went in. Both
+    shapes have to be readable or a live clip job can take the status endpoint
+    down with it.
+    """
+
+    class _FakeJob:
+        def __init__(self, status="running"):
+            self.status = status
+
+    def test_a_running_object_job_is_recognised_as_unfinished(self):
+        reg = {1: self._FakeJob("running"), 2: {"status": "done"}}
+
+        assert finished_ids(reg) == {2}
+
+    def test_a_finished_object_job_counts_as_finished(self):
+        reg = {1: self._FakeJob("done")}
+
+        assert finished_ids(reg) == {1}
+
+    def test_pruning_leaves_object_jobs_alone(self):
+        reg = {1: self._FakeJob("running"), 2: {"status": "done"}}
+
+        prune(reg, max_jobs=1)
+
+        assert 1 in reg
+        assert 2 not in reg
+
+    def test_an_object_job_is_not_dropped_while_it_runs(self):
+        reg = {1: self._FakeJob("running")}
+        for i in range(2, 12):
+            reg[i] = {"status": "done"}
+
+        prune(reg, max_jobs=3)
+
+        assert 1 in reg
+
+
 class TestTheLeakThisFixes:
     def test_a_long_running_server_stops_growing(self):
         """The reason this module exists. Before it, every run left its record

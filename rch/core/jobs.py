@@ -89,25 +89,17 @@ def append_item(registry: MutableMapping[int, Dict[str, Any]], job_id: int,
     job["items"].append(row)
 
 
-def snapshot(registry: MutableMapping[int, Dict[str, Any]],
-             job_id: int) -> Optional[Dict[str, Any]]:
-    """A detached, consistent copy of one job, or ``None`` if it is gone.
+def detach(record: Dict[str, Any]) -> Dict[str, Any]:
+    """Copy the parts of a job record that can still change.
 
-    Cheap on purpose: only the lists that a worker can still be appending to are
-    copied. A deep copy was only ever needed because those lists grow while the
-    caller holds the record - and every row is built fresh and appended, never
-    mutated afterwards, so a list copy is enough.
-
-    ``result`` is detached the same way for the same reason: the aggregate
-    summary carries its own ``items`` list, and that one is read from the same
-    response.
+    ``items`` grows while a worker is appending to it, and ``result`` carries
+    its own list of rows that is read from the same response. Rows are built
+    fresh and appended, never mutated afterwards, so copying those two lists is
+    enough - which is the whole reason this is not a deep copy.
     """
-    job = registry.get(job_id)
-    if job is None:
-        return None
-    snap = dict(job)
-    snap["items"] = list(job.get("items") or [])
-    result = job.get("result")
+    snap = dict(record)
+    snap["items"] = list(record.get("items") or [])
+    result = record.get("result")
     if isinstance(result, dict) and isinstance(result.get("items"), list):
         result = dict(result)
         result["items"] = list(result["items"])
@@ -115,10 +107,32 @@ def snapshot(registry: MutableMapping[int, Dict[str, Any]],
     return snap
 
 
+def snapshot(registry: MutableMapping[int, Dict[str, Any]],
+             job_id: int) -> Optional[Dict[str, Any]]:
+    """A detached, consistent copy of one job, or ``None`` if it is gone."""
+    job = registry.get(job_id)
+    if job is None:
+        return None
+    return detach(job)
+
+
+def _status_of(job: Any) -> Optional[str]:
+    """Read a job's status from either shape the registry holds.
+
+    Download jobs are plain records; clip jobs are objects from
+    ``clipper.progress.Job`` with a ``status`` attribute. Both kinds live in one
+    registry, so anything that walks it has to cope with both rather than assume
+    the dict shape it started with.
+    """
+    if isinstance(job, dict):
+        return job.get("status")
+    return getattr(job, "status", None)
+
+
 def finished_ids(registry: MutableMapping[int, Dict[str, Any]]) -> set:
     """Ids of jobs that will never advance again."""
     return {job_id for job_id, job in registry.items()
-            if job.get("status") in _DONE_STATUSES}
+            if _status_of(job) in _DONE_STATUSES}
 
 
 def prune(registry: MutableMapping[int, Dict[str, Any]],

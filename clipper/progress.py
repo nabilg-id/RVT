@@ -172,6 +172,9 @@ class Job:
         with self._lock:
             return {
                 "jobId": self.id,
+                # One registry holds clip jobs and download jobs, so a client
+                # needs to be able to say which kind it is looking at.
+                "kind": "clip",
                 "status": self.status,
                 "phase": self.phase,
                 "progress": round(self.progress, 4),

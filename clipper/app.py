@@ -18,6 +18,12 @@ from urllib.parse import urlsplit
 
 from flask import Flask, jsonify, render_template, request, send_from_directory
 
+from rch.core.jobs import append_item as jobs_append
+from rch.core.jobs import create_job as jobs_create
+from rch.core.jobs import detach as jobs_detach
+from rch.core.jobs import prune as jobs_prune
+from rch.core.jobs import update as jobs_update
+
 from .config import (
     OUTPUT_DIR,
     RCH_HOST,
@@ -145,6 +151,51 @@ def _next_job_id() -> int:
     with _JOB_LOCK:
         _JOB_COUNTER += 1
         return _JOB_COUNTER
+
+
+# ---------------------------------------------------------------------------
+# Job download (channel / playlist / single video)
+#
+# Two kinds of job share one registry and one id counter. They used to live in
+# separate apps, each with its own _JOBS and its own counter starting at zero,
+# so both handed out job id 1 and both served /api/status/<id>. Merging the
+# routes without merging the registry would have had the download page reading
+# the clipper's job 1 and vice versa. One counter is what makes an id mean one
+# job.
+# ---------------------------------------------------------------------------
+
+def _start_download_job(command: str, **fields) -> int:
+    """Register a download job and return its id. No work is started here."""
+    job_id = _next_job_id()
+    with _JOB_LOCK:
+        jobs_create(_JOBS, job_id, kind="download", command=command, **fields)
+    return job_id
+
+
+def _update_download_job(job_id: int, **fields) -> None:
+    """Merge fields into a download job, then make room in the registry."""
+    with _JOB_LOCK:
+        jobs_update(_JOBS, job_id, **fields)
+        # The registry is otherwise unbounded, and each record holds every
+        # per-video row it collected.
+        jobs_prune(_JOBS)
+
+
+def _append_download_item(job_id: int, row: dict) -> None:
+    with _JOB_LOCK:
+        jobs_append(_JOBS, job_id, row)
+
+
+def _job_snapshot(job) -> dict:
+    """Serialise either kind of job.
+
+    A clip job is a Job object with its own lock and snapshot; a download job is
+    a plain record in the shared registry. Both answers carry status, progress
+    and phase because both UIs read those three.
+    """
+    if isinstance(job, Job):
+        return job.snapshot(log_tail=_MAX_LOG)
+    return jobs_detach(job)
 
 
 def _clip_video_id(payload: dict) -> str | None:
@@ -430,14 +481,15 @@ def api_clip():
 def api_status(job_id: int):
     with _JOB_LOCK:
         job = _JOBS.get(job_id)
-    if job is None:
-        return jsonify({"error": "Job tidak ditemukan"}), 404
-
-    snapshot = job.snapshot(log_tail=_MAX_LOG)
-    if snapshot["status"] != "running" and job.claim_history():
-        # The browser polls until the job settles, so without this guard every
-        # poll would append another line to the history file.
-        _append_history(job.request, job)
+        if job is None:
+            return jsonify({"error": "Job tidak ditemukan"}), 404
+        snapshot = _job_snapshot(job)
+        # Only a clip job has history to write, and only once. The browser polls
+        # until a job settles, so without this guard every poll would append
+        # another line.
+        is_clip = isinstance(job, Job)
+        if is_clip and snapshot["status"] != "running" and job.claim_history():
+            _append_history(job.request, job)
     return jsonify(snapshot)
 
 
