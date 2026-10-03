@@ -18,11 +18,13 @@ keyword-only with a default, so the clip pipeline is untouched.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
 import tempfile
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
@@ -378,6 +380,249 @@ class YouTubeDownloader:
             return candidates[0]
         raise FileNotFoundError("Failed to download the video file.")
 
+    def download_many(self, urls, *, limit=None, concurrency=1,
+                      download_item=None, checkpoint=None, on_progress=None,
+                      **download_kwargs) -> BatchSummary:
+        """Download a list of URLs, isolating failures.
+
+        Args:
+            urls: The URLs to fetch. Blanks are dropped and duplicates collapse
+                to their first occurrence, so a channel listing that repeats an
+                id costs one download rather than two.
+            limit: Stop after this many URLs. ``None`` or ``0`` means all.
+            concurrency: How many to fetch at once. ``1`` runs strictly in
+                sequence, which is what you want when reading the logs.
+            download_item: The per-URL callable. Defaults to this downloader's
+                own ``download`` with ``download_kwargs`` applied. Tests inject
+                a fake here so a batch never touches the network.
+            checkpoint: Path to a JSON file listing finished URLs. Finished
+                URLs are skipped on a later run, and each success is saved
+                immediately so an interrupted run resumes instead of restarting.
+            on_progress: Called as ``(finished, total, item)`` after each URL.
+
+        Returns:
+            BatchSummary - every URL that was attempted, in input order, each
+            tagged with its result or its error.
+        """
+        if download_item is None:
+            raise ValueError(
+                "download_item is required; pass a callable or use download() "
+                "for a single URL"
+            )
+
+        targets = _unique_urls(urls)
+        if limit:
+            try:
+                cap = int(limit)
+            except (TypeError, ValueError):
+                cap = 0
+            if cap > 0:
+                targets = targets[:cap]
+
+        tracker = None
+        if checkpoint is not None:
+            tracker = _Checkpoint(checkpoint)
+            tracker.load()
+
+        pending = [u for u in targets if not (tracker and tracker.has(u))]
+        skipped = [u for u in targets if tracker and tracker.has(u)]
+
+        total = len(pending)
+        finished = 0
+
+        def _one(url: str) -> BatchItem:
+            nonlocal finished
+            try:
+                payload = download_item(url, **download_kwargs)
+            except Exception as exc:  # noqa: BLE001 - one bad row must not end the batch
+                item = BatchItem(url=url, error=str(exc) or exc.__class__.__name__)
+            else:
+                item = BatchItem(url=url, payload=_as_payload(payload))
+                if tracker is not None:
+                    tracker.mark(url)
+                    tracker.save()
+            finished += 1
+            if on_progress is not None:
+                on_progress(finished, total, item)
+            return item
+
+        if total == 0:
+            items: List[BatchItem] = []
+        elif int(concurrency or 1) <= 1:
+            items = [_one(url) for url in pending]
+        else:
+            workers = max(1, min(int(concurrency), total))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                # executor.map yields in input order, so the summary lines up
+                # with the caller's list even when a later item finishes first.
+                items = list(pool.map(_one, pending))
+
+        if tracker is not None:
+            # Written even when everything failed, so an all-failed run leaves a
+            # checkpoint behind rather than no evidence that it ever happened.
+            tracker.save()
+
+        return BatchSummary(items=items, skipped=skipped)
+
+
+@dataclass
+class BatchItem:
+    """One URL in a batch, whether it succeeded or not.
+
+    A failure is data, not an exception. A channel of 700 videos will always
+    contain a few that are private, deleted, or region-blocked, and losing the
+    other 690 to one bad row is the failure mode this type exists to prevent.
+    """
+
+    url: str
+    payload: Optional[dict] = None
+    error: Optional[str] = None
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None
+
+
+@dataclass
+class BatchSummary:
+    """The outcome of :meth:`YouTubeDownloader.download_many`.
+
+    ``items`` keeps the input order rather than the completion order, because
+    the caller matches results back against its own list.
+    """
+
+    items: List[BatchItem] = field(default_factory=list)
+    skipped: List[str] = field(default_factory=list)
+
+    @property
+    def ok(self) -> List[BatchItem]:
+        return [i for i in self.items if i.ok]
+
+    @property
+    def failed(self) -> List[BatchItem]:
+        return [i for i in self.items if not i.ok]
+
+    @property
+    def total(self) -> int:
+        return len(self.items)
+
+    @property
+    def succeeded(self) -> int:
+        return len(self.ok)
+
+    @property
+    def failed_count(self) -> int:
+        return len(self.failed)
+
+    def to_dict(self) -> dict:
+        """A JSON-safe report. Paths become strings so this can be written out."""
+        return {
+            "total": self.total,
+            "succeeded": self.succeeded,
+            "failedCount": self.failed_count,
+            "failed": [
+                {"url": i.url, "error": i.error} for i in self.failed
+            ],
+            "skipped": list(self.skipped),
+            "items": [
+                {
+                    "url": i.url,
+                    "ok": i.ok,
+                    "error": i.error,
+                    "result": _json_safe(i.payload),
+                }
+                for i in self.items
+            ],
+        }
+
+
+def _json_safe(value):
+    """Best-effort conversion of a payload into something json can encode."""
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, Path):
+        return str(value)
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+class _Checkpoint:
+    """Remembers which URLs a previous run already finished.
+
+    Written after every success rather than at the end, because the reason this
+    exists is a run that gets killed partway through a long channel - and that
+    is exactly when the end of the run never happens.
+    """
+
+    def __init__(self, path):
+        self.path = Path(path)
+        self._done: List[str] = []
+
+    def load(self) -> None:
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            # A missing file is the normal first run; a corrupt one is a killed
+            # run. Neither is a reason to refuse to start, so both start over
+            # and the next save overwrites the damage.
+            self._done = []
+            return
+        done = raw.get("done") if isinstance(raw, dict) else None
+        self._done = [str(u) for u in done] if isinstance(done, list) else []
+
+    def has(self, url: str) -> bool:
+        return url in self._done
+
+    def mark(self, url: str) -> None:
+        if url not in self._done:
+            self._done.append(url)
+
+    def save(self) -> None:
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(
+                json.dumps({"done": self._done}, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except OSError:
+            # A checkpoint that cannot be written costs a re-download on the next
+            # run, which is recoverable. Letting it raise would abandon the batch
+            # that is otherwise going fine.
+            pass
+
+
+def _as_payload(value):
+    """Coerce whatever a per-item downloader returned into a plain dict."""
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, DownloadResult):
+        return {
+            "path": value.path,
+            "title": value.title,
+            "duration": value.duration,
+            "video_id": value.video_id,
+            "files": list(value.files),
+        }
+    return {"result": value}
+
+
+def _unique_urls(urls) -> List[str]:
+    """Drop blanks and duplicates while keeping the original order."""
+    seen = set()
+    kept = []
+    for raw in urls or []:
+        url = str(raw).strip() if raw is not None else ""
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        kept.append(url)
+    return kept
+
 
 def _rate_to_bytes(rate: str) -> Optional[int]:
     """Parse ``2M`` / ``500K`` into bytes per second for yt-dlp's ``ratelimit``.
@@ -400,6 +645,8 @@ def _rate_to_bytes(rate: str) -> Optional[int]:
 # Imported for callers that want the same slug rules without instantiating the
 # downloader.
 __all__ = [
+    "BatchItem",
+    "BatchSummary",
     "DownloadResult",
     "YouTubeDownloader",
     "build_format_filter",
