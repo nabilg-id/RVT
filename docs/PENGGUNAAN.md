@@ -86,6 +86,17 @@ dan tampilan progres langsung. Untuk mengganti port:
 rch web --port 9000
 ```
 
+Satu proses melayani dua halaman:
+
+| Halaman | Isi |
+|---|---|
+| `/` | Clipper — potong klip viral |
+| `/download` | Downloader — video, thumbnail, metadata channel |
+
+Keduanya berbagi satu registry job, jadi `/api/status/<id>` membaca job clip
+maupun job download. Tab di header berpindah antar keduanya tanpa harus
+mengetik URL.
+
 > GUI hanya mendengarkan di `127.0.0.1` (lokal). Jangan dipakai di jaringan publik.
 
 ---
@@ -273,8 +284,13 @@ downloads/
     └── list-thumbnails-hqdefault.zip
 ```
 
-Selain file hasil, tiap run channel menulis `report.txt` (ringkasan) dan
-menambahkan baris ke `history.log` di folder output yang sama.
+Selain file hasil, tiap run channel menulis `report.json` (ringkasan) dan
+menambahkan satu baris ke `history.jsonl` di folder output yang sama.
+
+Tiap folder video berisi satu `metadata.json` — judul, deskripsi, link, durasi,
+tanggal upload, dan info thumbnail — menggantikan pasangan `deskripsi.txt` +
+`link.txt` yang dulu dipakai. Berkas lama masih dibaca, jadi arsip dari
+run sebelumnya tetap terbaca.
 
 ---
 

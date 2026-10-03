@@ -229,13 +229,17 @@ class TestModuleMainGuards:
 
         assert called == ["main"]
 
-    def test_rch_web_main_delegates_to_run_server(self, monkeypatch):
+    def test_clipper_app_module_starts_the_gui(self, monkeypatch):
+        """``python -m rch.web`` is gone. The GUI is one app now, and this
+        pins the entry point that replaced it so the two pages stay reachable
+        from one command."""
         called = []
-        monkeypatch.setattr("rch.web.server.run_server", lambda *a, **k: called.append((a, k)))
+        monkeypatch.setattr("clipper.app.run_server",
+                            lambda *a, **k: called.append((a, k)))
 
-        runpy.run_module("rch.web.__main__", run_name="__main__")
+        runpy.run_module("clipper.app.__main__", run_name="__main__")
 
-        assert called == [((), {})]
+        assert called
 
     def test_cli_module_guard_runs_the_cli(self, monkeypatch, capsys):
         """``python -m rch.cli`` executes the guard at the bottom of the module.

@@ -909,13 +909,19 @@ def backfill_ledger() -> int:
     Called once when the GUI starts so a user who already has a collection sees
     it on the board immediately instead of an empty table. Idempotent, and
     wrapped because a missing or unreadable folder must not stop the server.
+
+    The downloads folder is the same one the harvester writes to, resolved by the
+    shared helper. It used to be derived from ``OUTPUT_DIR.parent / "downloads"``,
+    which pointed at a ``downloads`` folder next to the clip output and so read
+    nothing at all once downloads moved to the native Downloads folder - the
+    board silently started empty for every existing user.
     """
     try:
         from rch.core.tracker import backfill_from_disk
     except Exception:  # noqa: BLE001 - tracker unavailable, board just stays empty
         return 0
     try:
-        return backfill_from_disk(OUTPUT_DIR.parent / "downloads", OUTPUT_DIR)
+        return backfill_from_disk(Path(default_downloads_dir()), OUTPUT_DIR)
     except Exception:  # noqa: BLE001 - never block startup on bookkeeping
         return 0
 

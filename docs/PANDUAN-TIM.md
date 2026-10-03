@@ -289,6 +289,16 @@ python -m clipper.app
 
 Browser terbuka di `http://127.0.0.1:8787`
 
+Dua halaman, satu proses. Tab di header berpindah antar keduanya:
+
+| Halaman | Untuk apa |
+|---|---|
+| `/` (Clipper) | potong klip viral dari satu video |
+| `/download` (Downloader) | unduh video, thumbnail, dan metadata channel |
+
+Keduanya memakai satu registry job, jadi `/api/status/<id>` bisa membaca job
+clip maupun job download.
+
 1. **Tempel URL** YouTube ke kolom atas
 2. Klik **Cek Info** → judul, durasi, thumbnail muncul
 3. Atur **Jumlah Clip**, **Durasi Min/Maks**, **Gaya Caption**

@@ -18,10 +18,10 @@ _Tempel satu URL, dapatkan clip pendek siap upload — dibangun untuk penggunaan
 ## ✨ Features
 
 - 🎬 **Generator Clip Viral** — pilih momen terbaik otomatis lewat AI (OpenRouter), transkripsi Whisper, face tracking, caption kata-per-kata, dan transisi hook → main.
-- 🌐 **GUI Web Lokal** — buka `127.0.0.1:8787` di browser, tidak perlu terminal. Preview metadata + thumbnail sebelum generate, progres live, riwayat job.
+- 🌐 **GUI Web Lokal** — buka `127.0.0.1:8787` di browser, tidak perlu terminal. Dua halaman dalam satu proses: **Clipper** (`/`) dan **Downloader** (`/download`), berbagi satu registry job. Preview metadata + thumbnail sebelum generate, progres live, riwayat job.
 - 🖼️ **Akuisisi dari RCH** — metadata (judul, deskripsi, durasi, tanggal) dan thumbnail diambil sebelum clip dibuat.
 - 🎨 **7 gaya caption** — Clean White, Viral Yellow/Red/Green, Neon Cyan/Pink, Bold Black BG.
-- 📋 **Riwayat** — setiap job clip tercatat di `temp/clip-history.log`.
+- 📋 **Riwayat** — setiap job clip tercatat di `temp/clip-history.jsonl`.
 
 ---
 
@@ -30,6 +30,7 @@ _Tempel satu URL, dapatkan clip pendek siap upload — dibangun untuk penggunaan
 ```bash
 pip install -r requirements.txt
 python -m clipper.app        # GUI web di http://127.0.0.1:8787
+rch web                      # sama persis, lewat CLI
 ```
 
 Tanpa `pip install` penuh, gunakan `requirements-dev.txt` (mode ringan: GUI

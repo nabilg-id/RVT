@@ -170,7 +170,7 @@ rch channel-info https://www.youtube.com/@namachannel --cookies chrome
 │   │   ├── events.py         # event emitter (progress)
 │   │   ├── export.py         # ekspor CSV/JSON
 │   │   ├── http.py           # requests + retry backoff
-│   │   ├── report.py         # report.txt + history.log
+│   │   ├── report.py         # report.json + history.jsonl
 │   │   └── zip_util.py       # helper ZIP (zipfile)
 │   ├── web/
 │   │   ├── server.py         # GUI Flask
@@ -191,8 +191,7 @@ rch channel-info https://www.youtube.com/@namachannel --cookies chrome
 ## 3. Alur Kerja
 
 ```
-CLI (rch <perintah>)  atau  GUI web (rch web)
-        │
+CLI (rch <perintah>)  atau  GUI web (rch web)        │
         ▼
 rch/youtube/  (dispatcher per fitur)
         │
@@ -214,7 +213,7 @@ rch/youtube/  (dispatcher per fitur)
         │
         └─ channel.py ──► list_ids ──► metadata batch ──► worker paralel
                                  │
-                                 └─ checkpoint (resume) + report.txt
+                                 └─ checkpoint (resume) + report.json
 ```
 
 ### Pola return (konsisten di semua fungsi)
@@ -317,7 +316,7 @@ Tiga perintah channel berbagi satu pipeline:
 | `checkpoint.py` | state resume, atomic write, idempotent |
 | `events.py` | emitter `progress` / `phase` / `video:done` |
 | `export.py` | ekspor CSV/JSON, proteksi formula injection pada CSV |
-| `report.py` | `report.txt` per run + `history.log` (append) |
+| `report.py` | `report.json` per run + `history.jsonl` (append) |
 | `zip_util.py` | pembungkus `zipfile` untuk arsip bulk |
 
 ---
@@ -380,8 +379,11 @@ python -m rch video https://youtu.be/dQw4w9WgXcQ --mp3
 python -m rch channel-full https://www.youtube.com/@namachannel --limit 5
 
 # GUI
-python -m rch web
+rch web                  # atau: python -m clipper.app
 ```
+
+`rch web` menjalankan app yang sama dengan `python -m clipper.app`: satu proses
+melayani halaman clipper (`/`) dan halaman downloader (`/download`).
 
 ---
 

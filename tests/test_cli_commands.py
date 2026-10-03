@@ -826,7 +826,7 @@ class TestWebCommands:
     @pytest.mark.parametrize("command", ["web", "gui", "serve"])
     def test_delegates_to_run_server(self, runner, monkeypatch, command):
         seen = {}
-        monkeypatch.setattr("rch.web.server.run_server",
+        monkeypatch.setattr("clipper.app.run_server",
                             lambda **kw: seen.setdefault("kw", kw))
 
         runner.invoke(cli, [command])
@@ -836,7 +836,7 @@ class TestWebCommands:
     @pytest.mark.parametrize("command", ["web", "gui", "serve"])
     def test_host_and_port_flags_are_forwarded(self, runner, monkeypatch, command):
         seen = {}
-        monkeypatch.setattr("rch.web.server.run_server",
+        monkeypatch.setattr("clipper.app.run_server",
                             lambda **kw: seen.setdefault("kw", kw))
 
         runner.invoke(cli, [command, "--host", "0.0.0.0", "--port", "9999"])
@@ -845,6 +845,6 @@ class TestWebCommands:
 
     @pytest.mark.parametrize("command", ["web", "gui", "serve"])
     def test_non_integer_port_is_a_usage_error(self, runner, monkeypatch, command):
-        monkeypatch.setattr("rch.web.server.run_server", lambda **kw: None)
+        monkeypatch.setattr("clipper.app.run_server", lambda **kw: None)
 
         assert runner.invoke(cli, [command, "--port", "abc"]).exit_code == 2

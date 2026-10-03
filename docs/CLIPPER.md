@@ -113,7 +113,7 @@ URL YouTube
 | Lokasi | Isi |
 | --- | --- |
 | `./clips/` | File MP4 hasil |
-| `./temp/` | Video sumber sementara + `clip-history.log` |
+| `./temp/` | Video sumber sementara + `clip-history.jsonl` |
 | `./asset/transisi.mp4` | Video transisi opsional (tidak wajib) |
 
 Nama file: `clip_<nomor>_<skor>pts_<id-video>.mp4`, misal

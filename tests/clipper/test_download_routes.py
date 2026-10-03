@@ -270,6 +270,89 @@ class TestTwoKindsOfHistory:
         assert body[0]["items"] == [{"videoId": "dQw4w9WgXcQ", "status": None}]
 
 
+class TestThePageCanActuallyRenderThePayload:
+    """The payload and the page are separate pieces that have to agree.
+
+    These came from the retired app's own suite. Nothing here checks that the
+    numbers are right - it checks that download.js has the fields it reads, and
+    that a row whose engine result spells success ``videoOk`` is not rendered as
+    a failure.
+    """
+
+    def test_the_status_payload_has_what_the_poll_loop_reads(self, engine):
+        client = A.app.test_client()
+        job_id = _post("/api/channel-full", url=CHANNEL_URL).get_json()["jobId"]
+
+        body = _wait(client, job_id)
+
+        assert set(body) >= {"status", "progress", "phase", "items", "result",
+                             "error"}
+        assert set(body["result"]) >= {"total", "success", "failed", "zipPath",
+                                       "items"}
+
+    def test_a_video_ok_row_is_not_rendered_as_a_failure(self, monkeypatch):
+        """channel-full items spell success ``videoOk``; the page reads ``ok``.
+        Without the rename every successful channel-full row would be labelled
+        GAGAL, which is the kind of bug a passing unit test never catches."""
+        monkeypatch.setattr("rch.youtube.channel.channel_full",
+                            lambda link, opts, emitter=None: {
+                                "status": True, "result": {
+                                    "total": 1, "success": 1, "failed": 0,
+                                    "items": [{"videoId": "v1", "title": "T",
+                                               "videoOk": True, "thumbOk": True,
+                                               "unavailable": False,
+                                               "error": None}]}})
+        client = A.app.test_client()
+        job_id = _post("/api/channel-full", url=CHANNEL_URL).get_json()["jobId"]
+
+        row = _wait(client, job_id)["result"]["items"][0]
+
+        assert set(row) >= {"ok", "videoId", "title", "error"}
+        assert row["ok"] is True
+
+    def test_the_row_carries_exactly_what_the_page_reads(self, monkeypatch):
+        """An extra key here would be noise; a missing one is a blank cell."""
+        monkeypatch.setattr("rch.youtube.channel.channel_full",
+                            lambda link, opts, emitter=None: {
+                                "status": True, "result": {
+                                    "total": 1, "success": 1, "failed": 0,
+                                    "items": [{"videoId": "v1", "title": "T",
+                                               "videoOk": True}]}})
+        client = A.app.test_client()
+        job_id = _post("/api/channel-full", url=CHANNEL_URL).get_json()["jobId"]
+
+        row = _wait(client, job_id)["result"]["items"][0]
+
+        assert set(row) == {"ok", "videoId", "title", "error"}
+
+    def test_an_engine_error_never_leaks_a_traceback(self, monkeypatch):
+        """The page renders the message straight into the DOM, so a traceback
+        would hand a local user the server's file paths."""
+        def _boom(_link):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr("rch.youtube.thumbnail.thumbnail", _boom)
+
+        body = _post("/api/info",
+                     url="https://youtu.be/dQw4w9WgXcQ").get_data(as_text=True)
+
+        assert "Traceback" not in body
+        assert 'File "' not in body
+
+    def test_a_channel_job_error_never_leaks_a_traceback(self, monkeypatch):
+        def _boom(*a, **k):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr("rch.youtube.channel.channel_full", _boom)
+        client = A.app.test_client()
+        job_id = _post("/api/channel-full", url=CHANNEL_URL).get_json()["jobId"]
+
+        payload = _wait(client, job_id)
+
+        assert "Traceback" not in str(payload)
+        assert 'File "' not in str(payload)
+
+
 class TestNothingIsLostInTheMove:
     def test_every_former_route_is_served_here(self):
         """Each of these used to be served by the retired app. One of them had to

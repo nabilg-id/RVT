@@ -421,8 +421,13 @@ def channel_info_cmd(url: str, size: Optional[str], **kwargs) -> None:
 @click.option("--host", default=DEFAULT_WEB_HOST, show_default=True, help="Host bind.")
 @click.option("--port", type=int, default=DEFAULT_WEB_PORT, show_default=True, help="Port.")
 def web(host: str, port: int) -> None:
-    """Jalankan GUI web lokal di browser."""
-    from .web.server import run_server
+    """Jalankan GUI web lokal di browser.
+
+    Menjalankan app yang sama dengan ``python -m clipper.app``: satu proses
+    melayani halaman clipper dan halaman downloader, jadi ``/api/status`` membaca
+    kedua jenis job dari satu registry.
+    """
+    from clipper.app import run_server
 
     run_server(host=host, port=port)
 
@@ -432,7 +437,7 @@ def web(host: str, port: int) -> None:
 @click.option("--port", type=int, default=DEFAULT_WEB_PORT, show_default=True)
 def gui(host: str, port: int) -> None:
     """Alias dari 'web'."""
-    from .web.server import run_server
+    from clipper.app import run_server
 
     run_server(host=host, port=port)
 
@@ -442,7 +447,7 @@ def gui(host: str, port: int) -> None:
 @click.option("--port", type=int, default=DEFAULT_WEB_PORT, show_default=True)
 def serve(host: str, port: int) -> None:
     """Alias dari 'web'."""
-    from .web.server import run_server
+    from clipper.app import run_server
 
     run_server(host=host, port=port)
 
