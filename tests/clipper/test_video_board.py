@@ -193,7 +193,12 @@ class TestBackfillOnStart:
 
     def test_existing_downloads_are_picked_up(self, tmp_path, monkeypatch):
         monkeypatch.setattr(A, "OUTPUT_DIR", tmp_path / "clips")
-        folder = tmp_path / "downloads" / "satu"
+        # Downloads come from the shared resolver, the same folder the harvester
+        # writes to. It used to be derived from OUTPUT_DIR.parent, which pointed
+        # at a folder nothing writes to and left the board empty for every user.
+        downloads = tmp_path / "downloads"
+        monkeypatch.setattr(A, "default_downloads_dir", lambda: downloads)
+        folder = downloads / "satu"
         folder.mkdir(parents=True)
         (folder / "video.mp4").write_bytes(b"\x00" * 16)
         (folder / "link.txt").write_text(f"https://youtu.be/{OTHER_ID}\n",
@@ -203,6 +208,21 @@ class TestBackfillOnStart:
         from rch.core.tracker import list_videos
 
         assert list_videos()[0]["videoId"] == OTHER_ID
+
+    def test_a_downloads_folder_beside_the_clips_is_ignored(self, tmp_path,
+                                                             monkeypatch):
+        """Pins the fix. That folder used to be the only place backfill looked,
+        which is why a real collection showed an empty board."""
+        monkeypatch.setattr(A, "OUTPUT_DIR", tmp_path / "clips")
+        monkeypatch.setattr(A, "default_downloads_dir",
+                            lambda: tmp_path / "unrelated")
+        stale = tmp_path / "downloads" / "lama"
+        stale.mkdir(parents=True)
+        (stale / "video.mp4").write_bytes(b"\x00" * 16)
+        (stale / "link.txt").write_text(f"https://youtu.be/{OTHER_ID}\n",
+                                        encoding="utf-8")
+
+        assert A.backfill_ledger() == 0
 
     def test_running_twice_adds_nothing(self, tmp_path, monkeypatch):
         monkeypatch.setattr(A, "OUTPUT_DIR", tmp_path / "clips")

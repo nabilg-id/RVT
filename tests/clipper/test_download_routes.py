@@ -270,6 +270,198 @@ class TestTwoKindsOfHistory:
         assert body[0]["items"] == [{"videoId": "dQw4w9WgXcQ", "status": None}]
 
 
+class TestLiveProgressReachesTheBrowser:
+    """The emitter is how a channel run shows movement while it works.
+
+    Nothing in the route tests emitted anything, so every handler here ran zero
+    times. That is the path a user actually watches: a run of 700 videos that
+    never moved the bar looks identical to one that is wedged.
+    """
+
+    def _emitting(self, events):
+        """A fake engine that emits, then returns."""
+        def _inner(_link, options, emitter=None):
+            for name, payload in events:
+                emitter.emit(name, payload)
+            return {"status": True, "result": {"total": 2, "success": 2,
+                                               "failed": 0, "items": []}}
+
+        return _inner
+
+    def _run(self, monkeypatch, events):
+        monkeypatch.setattr("rch.youtube.channel.channel_full",
+                            self._emitting(events))
+        client = A.app.test_client()
+        job_id = _post("/api/channel-full", url=CHANNEL_URL).get_json()["jobId"]
+        return client, _wait(client, job_id)
+
+    def test_progress_moves_the_bar(self, monkeypatch):
+        _client, payload = self._run(
+            monkeypatch, [("progress", {"done": 1, "total": 4})])
+
+        assert payload["status"] == "done"
+
+    def test_a_mid_run_snapshot_shows_the_ratio_and_count(self, monkeypatch):
+        """Captured before the job settles, which is the state the browser
+        actually polls."""
+        seen = {}
+
+        def _peek(_link, options, emitter=None):
+            # The job id is not known until the route returns, so the engine
+            # finds its own record rather than closing over a later assignment.
+            with A._JOB_LOCK:
+                job_id = next(i for i, j in A._JOBS.items()
+                              if j.get("kind") == "download")
+            emitter.emit("progress", {"done": 1, "total": 4})
+            emitter.emit("phase", {"phase": "download"})
+            emitter.emit("video:done", {"id": "v1", "title": "Satu",
+                                        "ok": True, "error": None})
+            with A._JOB_LOCK:
+                seen.update(dict(A._JOBS[job_id]))
+            return {"status": True, "result": {"total": 2, "success": 2,
+                                               "failed": 0, "items": []}}
+
+        monkeypatch.setattr("rch.youtube.channel.channel_full", _peek)
+        started = _post("/api/channel-full", url=CHANNEL_URL).get_json()
+        job_id = started["jobId"]
+
+        import time
+
+        for _ in range(200):
+            with A._JOB_LOCK:
+                if A._JOBS.get(job_id, {}).get("items"):
+                    break
+            time.sleep(0.02)
+
+        assert seen.get("progress") in (0.25, 1.0)
+        assert "1/4" in str(seen.get("phase")) or seen.get("phase") == "download"
+
+    def test_a_finished_video_is_appended_as_a_row(self, monkeypatch):
+        def _inner(_link, options, emitter=None):
+            emitter.emit("video:done", {"id": "v1", "title": "Satu",
+                                        "ok": True, "error": None})
+            emitter.emit("video:done", {"id": "v2", "title": "Dua",
+                                        "ok": False, "error": "403"})
+            return {"status": True, "result": {"total": 2, "success": 1,
+                                               "failed": 1, "items": []}}
+
+        monkeypatch.setattr("rch.youtube.channel.channel_full", _inner)
+        client = A.app.test_client()
+        job_id = _post("/api/channel-full", url=CHANNEL_URL).get_json()["jobId"]
+
+        _wait(client, job_id)
+        rows = A._JOBS[job_id]["items"]
+
+        assert [r["videoId"] for r in rows] == ["v1", "v2"]
+        assert rows[0]["ok"] is True
+        assert rows[1]["error"] == "403"
+
+    def test_progress_with_no_total_does_not_divide_by_zero(self, monkeypatch):
+        def _inner(_link, options, emitter=None):
+            emitter.emit("progress", {"done": 0, "total": 0})
+            return {"status": True, "result": {"total": 0, "success": 0,
+                                               "failed": 0, "items": []}}
+
+        monkeypatch.setattr("rch.youtube.channel.channel_full", _inner)
+        client = A.app.test_client()
+        job_id = _post("/api/channel-full", url=CHANNEL_URL).get_json()["jobId"]
+
+        payload = _wait(client, job_id)
+
+        assert payload["status"] == "done"
+
+
+class TestResultShaping:
+    """The summary is what the page renders, so its edge cases matter more than
+    they look: every one of these is a shape a misbehaving engine can return."""
+
+    def test_a_non_dict_result_passes_through(self):
+        assert A._summarise("apa saja") == "apa saja"
+
+    def test_a_failed_run_becomes_a_message(self):
+        out = A._summarise({"status": False, "message": "tidak ada video"})
+
+        assert out == {"message": "tidak ada video"}
+
+    def test_a_failed_run_without_a_message_says_gagal(self):
+        assert A._summarise({"status": False}) == {"message": "Gagal"}
+
+    def test_a_non_dict_result_body_passes_through(self):
+        out = A._summarise({"status": True, "result": "ringkasan teks"})
+
+        assert out == "ringkasan teks"
+
+    def test_a_row_keeps_an_explicit_ok(self):
+        """videoOk is the fallback; an explicit ok must not be overwritten by it
+        when an engine happens to send both."""
+        row = A._result_row({"videoId": "v", "ok": False, "videoOk": True})
+
+        assert row["ok"] is False
+
+    def test_a_row_falls_back_to_the_id_field(self):
+        row = A._result_row({"id": "abc", "videoOk": True})
+
+        assert row["videoId"] == "abc"
+
+    def test_a_row_normalises_none_text_to_empty(self):
+        """jsonify emits null for None, and the page renders these straight
+        into cells; an empty string keeps the cells blank rather than saying
+        'null'."""
+        row = A._result_row({"videoId": "v", "title": None, "error": None})
+
+        assert row["title"] == ""
+        assert row["error"] == ""
+
+    def test_non_dict_items_are_dropped(self):
+        out = A._summarise({"status": True, "result": {
+            "total": 1, "items": ["bukan dict", {"videoId": "v", "videoOk": True}]}})
+
+        assert len(out["items"]) == 1
+
+    def test_a_result_with_no_items_key_is_fine(self):
+        out = A._summarise({"status": True, "result": {"total": 0}})
+
+        assert out["items"] == []
+
+
+class TestLinkExtraction:
+    def test_link_is_accepted_as_well_as_url(self, engine):
+        _post("/api/info", link="https://youtu.be/dQw4w9WgXcQ")
+
+        assert engine[0][1][0] == "https://youtu.be/dQw4w9WgXcQ"
+
+    def test_whitespace_around_a_url_is_stripped(self, engine):
+        _post("/api/info", url="  https://youtu.be/dQw4w9WgXcQ  ")
+
+        assert engine[0][1][0] == "https://youtu.be/dQw4w9WgXcQ"
+
+    def test_url_wins_over_link_when_both_are_sent(self, engine):
+        _post("/api/info", url="https://youtu.be/dQw4w9WgXcQ",
+              link="https://youtu.be/lain")
+
+        assert engine[0][1][0] == "https://youtu.be/dQw4w9WgXcQ"
+
+
+class TestTrackerStatusLookup:
+    def test_it_is_empty_outside_a_request(self):
+        """_result_row is called from the worker thread, where there is no
+        request to cache against. Raising here would kill the job."""
+        assert A._tracker_statuses() == {}
+
+    def test_a_missing_ledger_yields_no_statuses(self, monkeypatch):
+        import rch.core.tracker as tracker_mod
+
+        def _boom():
+            raise OSError("ledger hilang")
+
+        monkeypatch.setattr(tracker_mod, "statuses_for", _boom)
+        client = A.app.test_client()
+
+        res = client.get("/api/runs?out=/tmp/apa-saja", headers=HOST)
+
+        assert res.status_code == 200
+
+
 class TestThePageCanActuallyRenderThePayload:
     """The payload and the page are separate pieces that have to agree.
 

@@ -232,7 +232,14 @@ def _track_clip_start(job: Job, payload: dict) -> None:
 
 
 def _run_clip_job(job: Job, payload: dict) -> None:
-    """Jalankan pipeline di thread terpisah sambil menangkap log-nya."""
+    """Jalankan pipeline di thread terpisah sambil menangkap log-nya.
+
+    The shared ledger is written *before* the job status changes, never after.
+    Job status is what every client polls, so it has to be the last thing to
+    move: finishing first let a poller see a settled job while the video board
+    still showed the video as processing, and the two disagreed until the next
+    event arrived.
+    """
     try:
         from .services.video_processor import VideoProcessor
 
@@ -248,17 +255,17 @@ def _run_clip_job(job: Job, payload: dict) -> None:
         job.set_title(title)
         with job._lock:
             job.outputs = [Path(o).name for o in outputs]
-        job.finish()
         if outputs:
             _track("clip", payload, status="done", style=payload["style"],
                    files=[Path(o).name for o in outputs], title=title)
         else:
             _track("clip", payload, status="failed", style=payload["style"],
                    error="Tidak ada clip yang berhasil dibuat")
+        job.finish()
     except Exception as exc:  # noqa: BLE001 - surfaced to the UI
-        job.finish(error=str(exc))
         _track("clip", payload, status="failed", style=payload["style"],
                error=str(exc))
+        job.finish(error=str(exc))
 
 
 def _append_history(payload: dict, job: Job) -> None:
