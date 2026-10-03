@@ -914,8 +914,18 @@ def channel_full(channel_url: str, options: Optional[Dict] = None, *,
 
         envelope: Dict = {"status": False, "message": None}
         if include_video and not unavailable:
-            envelope = downloader(watch_url(video_id), _video_download_options(
-                folder_path, quality, subtitles, sub_lang))
+            # The download is isolated here, not left to escape. Letting it raise
+            # unwound the rest of this video: no thumbnail, no description, no
+            # link file, and nothing in the archive but an entry that looks
+            # complete to the count while being empty on disk. A dead video is
+            # the expected case on any real channel, so its metadata is still
+            # worth having.
+            try:
+                envelope = downloader(watch_url(video_id), _video_download_options(
+                    folder_path, quality, subtitles, sub_lang))
+            except Exception as exc:  # noqa: BLE001 - recorded on the item
+                envelope = {"status": False, "message": str(exc) or
+                            exc.__class__.__name__}
 
         thumb_ok = _fetch_thumbnail(video_id, size, folder_path, image_fetcher)
         _write_sidecar_files(folder_path, info, video_id, unavailable)
