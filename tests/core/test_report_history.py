@@ -1,10 +1,13 @@
-"""Tests for rch.core.report — history.log parsing and read_history.
+"""Tests for the legacy history.log parser and for read_history.
 
-``read_history`` is the reader half of the audit trail (the writer half is
-covered by ``test_write_report`` / ``test_append_history`` above). The parser
-is deliberately lenient about input and strict about output: malformed lines
-are dropped rather than surfaced as half-populated records, and the six
-field order is guaranteed regardless of what the file contains.
+``read_history`` reads two files: the canonical ``history.jsonl`` and the legacy
+``history.log``, whose records predate the JSON change. The parser below is the
+reason old folders keep working, so it is still tested directly.
+
+The reader half of the canonical format lives in ``test_report_json.py`` and the
+file mechanics in ``test_report.py``; what is here is the legacy path, including
+that a legacy count stays a string because changing it would silently break
+whatever already consumes those records.
 """
 from __future__ import annotations
 
@@ -12,14 +15,19 @@ from pathlib import Path
 
 import pytest
 
-from rch.core.report import HISTORY_FILE, parse_history_line, read_history
+from rch.core.report import (
+    HISTORY_FILE,
+    LEGACY_HISTORY_FILE,
+    parse_history_line,
+    read_history,
+)
 
 _VALID_LINE = (
     "2026-01-02 03:04:05 | channel-full | https://x/@ch | total=3 | sukses=2 | gagal=1"
 )
 
 
-def _write(tmp_path, text, name=HISTORY_FILE):
+def _write(tmp_path, text, name=LEGACY_HISTORY_FILE):
     p = tmp_path / name
     p.write_text(text, encoding="utf-8", newline="\n")
     return p
@@ -114,6 +122,8 @@ class TestParseHistoryLine:
 
 
 class TestReadHistory:
+    """The legacy path. Records keep the types the text file actually held."""
+
     def test_returns_empty_list_when_file_missing(self, tmp_path):
         assert read_history(str(tmp_path)) == []
 
@@ -121,6 +131,11 @@ class TestReadHistory:
         _write(tmp_path, _VALID_LINE + "\n")
 
         assert len(read_history(Path(tmp_path))) == 1
+
+    def test_reads_the_json_file_when_that_is_all_there_is(self, tmp_path):
+        _write(tmp_path, '{"command": "baru"}\n', name=HISTORY_FILE)
+
+        assert read_history(tmp_path)[0]["command"] == "baru"
 
     def test_reads_all_valid_lines(self, tmp_path):
         _write(tmp_path, _VALID_LINE + "\n" + _VALID_LINE.replace("3", "9") + "\n")
@@ -189,4 +204,5 @@ class TestReadHistory:
 
         assert record["command"] == "channel"
         assert record["channel"] == "Kanal"
-        assert (record["total"], record["success"], record["failed"]) == ("3", "2", "1")
+        # Numbers, not the strings the legacy text file held.
+        assert (record["total"], record["success"], record["failed"]) == (3, 2, 1)

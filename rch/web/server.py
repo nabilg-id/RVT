@@ -358,8 +358,9 @@ def api_history():
         return jsonify({"error": "Parameter out tidak valid"}), 400
     records.reverse()
     # Each row gains the per-video statuses it covered, so the table can show
-    # "3 dari 5 sudah clip" instead of only aggregate counts. Older rows have
-    # no ids= field and simply report an empty list.
+    # "3 dari 5 sudah clip" instead of only aggregate counts. A legacy row whose
+    # ids were truncated at twelve reports only those twelve, and a row with no
+    # id list at all reports an empty one.
     for record in records:
         ids = record.get("videoIds") or []
         statuses = _tracker_statuses()

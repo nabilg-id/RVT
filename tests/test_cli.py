@@ -17,6 +17,7 @@ import pytest
 from rch import cli as cli_mod
 from rch.cli import _abs, _build_options, _export, _finish_channel_result, _print_progress
 from rch.config import CONFIG
+from rch.core.report import read_history, read_report
 
 _OK_RESULT = {
     "status": True,
@@ -409,17 +410,17 @@ class TestFinishChannelResult:
     def test_report_file_is_written(self, tmp_path):
         _finish_channel_result(_OK_RESULT, "channel-full", "https://x/@ch", str(tmp_path))
 
-        content = (tmp_path / "report.txt").read_text(encoding="utf-8")
-        assert "Total   : 2" in content
-        assert "https://x/@ch" in content
-        assert "Perintah: channel-full" in content
+        data = read_report(tmp_path)
+        assert data["total"] == 2
+        assert data["channel"] == "https://x/@ch"
+        assert data["command"] == "channel-full"
 
     def test_history_entry_is_appended(self, tmp_path):
         _finish_channel_result(_OK_RESULT, "channel-video", "https://x/@ch", str(tmp_path))
 
-        line = (tmp_path / "history.log").read_text(encoding="utf-8").strip()
-        assert "channel-video" in line
-        assert "total=2" in line
+        record = read_history(tmp_path)[0]
+        assert record["command"] == "channel-video"
+        assert record["total"] == 2
 
     def test_report_records_failed_items(self, tmp_path):
         result = {"status": True, "result": {
@@ -429,16 +430,17 @@ class TestFinishChannelResult:
 
         _finish_channel_result(result, "channel-full", "URL", str(tmp_path))
 
-        assert "vid9 -> 403" in (tmp_path / "report.txt").read_text(encoding="utf-8")
+        fails = read_report(tmp_path)["fails"]
+        assert fails == [{"id": "vid9", "error": "403"}]
 
     def test_output_dir_is_created_if_missing(self, tmp_path):
         nested = tmp_path / "a" / "b"
 
         _finish_channel_result(_OK_RESULT, "channel-full", "URL", str(nested))
 
-        assert (nested / "report.txt").exists()
+        assert (nested / "report.json").exists()
 
     def test_report_path_is_echoed(self, tmp_path, capsys):
         _finish_channel_result(_OK_RESULT, "channel-full", "URL", str(tmp_path))
 
-        assert f"Report: {os.path.abspath(tmp_path / 'report.txt')}" in capsys.readouterr().out
+        assert f"Report: {os.path.abspath(tmp_path / 'report.json')}" in capsys.readouterr().out

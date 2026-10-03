@@ -30,7 +30,7 @@ def _hermetic_cwd(monkeypatch, tmp_path):
     """Run every CLI test from a scratch directory.
 
     Commands that omit ``--out`` default to ``./downloads`` and write
-    ``report.txt`` / ``history.log`` there, so without this the suite would
+    ``report.json`` / ``history.jsonl`` there, so without this the suite would
     litter the developer's working tree and make runs order-dependent.
     """
     monkeypatch.chdir(tmp_path)
@@ -292,8 +292,8 @@ class TestChannelCommand:
 
         runner.invoke(cli, ["channel", "https://x/@ch", "--out", str(tmp_path)])
 
-        assert (tmp_path / "report.txt").exists()
-        assert (tmp_path / "history.log").exists()
+        assert (tmp_path / "report.json").exists()
+        assert (tmp_path / "history.jsonl").exists()
 
     def test_lists_failed_urls(self, runner, monkeypatch):
         rec = _Recorder({"status": True, "result": {
@@ -554,8 +554,8 @@ class TestChannelFullCommand:
         result = runner.invoke(cli, ["channel-full", "https://x/@ch", "--out", str(tmp_path)])
 
         assert result.exit_code == 0
-        assert (tmp_path / "report.txt").exists()
-        assert (tmp_path / "history.log").exists()
+        assert (tmp_path / "report.json").exists()
+        assert (tmp_path / "history.jsonl").exists()
 
     def test_out_option_reaches_the_engine(self, runner, engine, tmp_path):
         runner.invoke(cli, ["channel-full", "https://x/@ch", "--out", str(tmp_path)])
@@ -573,7 +573,7 @@ class TestChannelFullCommand:
     def test_out_option_reaches_report_writer(self, runner, engine, tmp_path):
         result = runner.invoke(cli, ["channel-full", "https://x/@ch", "--out", str(tmp_path)])
 
-        assert f"Report: {os.path.abspath(tmp_path / 'report.txt')}" in result.output
+        assert f"Report: {os.path.abspath(tmp_path / 'report.json')}" in result.output
 
     def test_size_positional_reaches_the_engine(self, runner, engine):
         runner.invoke(cli, ["channel-full", "https://x/@ch", "maxresdefault"])
@@ -677,7 +677,7 @@ class TestChannelVideoCommand:
         result = runner.invoke(cli, ["channel-video", "https://x/@ch", "--out", str(tmp_path)])
 
         assert result.exit_code == 0
-        assert (tmp_path / "report.txt").exists()
+        assert (tmp_path / "report.json").exists()
 
     def test_out_option_reaches_the_engine(self, runner, engine, tmp_path):
         runner.invoke(cli, ["channel-video", "https://x/@ch", "--out", str(tmp_path)])
@@ -692,7 +692,7 @@ class TestChannelVideoCommand:
     def test_history_records_command_name(self, runner, engine, tmp_path):
         runner.invoke(cli, ["channel-video", "https://x/@ch", "--out", str(tmp_path)])
 
-        assert "channel-video" in (tmp_path / "history.log").read_text(encoding="utf-8")
+        assert "channel-video" in (tmp_path / "history.jsonl").read_text(encoding="utf-8")
 
     def test_failure_exits_with_code_1(self, runner, engine, tmp_path):
         engine.result = {"status": False, "message": "boom"}
@@ -814,7 +814,7 @@ class TestChannelInfoCommand:
     def test_no_report_is_written_on_success(self, runner, engine, tmp_path):
         runner.invoke(cli, ["channel-info", "https://x/@ch", "--out", str(tmp_path)])
 
-        assert not (tmp_path / "report.txt").exists()
+        assert not (tmp_path / "report.json").exists()
 
 
 # ---------------------------------------------------------------------------

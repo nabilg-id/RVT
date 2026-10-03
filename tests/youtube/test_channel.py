@@ -2458,7 +2458,7 @@ class TestBuildReport:
         assert report["channel"] is None
 
     def test_report_is_writable_by_core_report(self, tmp_path):
-        from rch.core.report import write_report
+        from rch.core.report import read_report, write_report
 
         result = channel_full(
             CHANNEL_URL,
@@ -2472,9 +2472,9 @@ class TestBuildReport:
         )["result"]
         report = build_report(result)
         report["command"] = "channel-full"
-        path = write_report(str(tmp_path), report)
-        content = Path(path).read_text(encoding="utf-8")
-        assert "Channel : " + CHANNEL_URL in content
-        assert "Total   : 2" in content
-        assert "Unavailable: 1" in content
-        assert "gone" in content
+        write_report(str(tmp_path), report)
+        data = read_report(tmp_path)
+        assert data["channel"] == CHANNEL_URL
+        assert data["total"] == 2
+        assert data["unavailable"] == 1
+        assert "gone" in data["unavailableIds"]
