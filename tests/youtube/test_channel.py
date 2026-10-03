@@ -19,6 +19,10 @@ import pytest
 
 from rch.core.checkpoint import load_checkpoint, save_checkpoint
 from rch.core.events import create_emitter
+
+# ``channel`` is already a fixture name in this file, so the module is reached
+# through an alias when a test needs to patch something on it.
+from rch.youtube import channel as channel_module
 from rch.youtube.channel import (
     _RETRY_DELAY_SECONDS,
     _THUMBNAIL_RETRIES,
@@ -2257,22 +2261,36 @@ class TestDefaultHelpers:
         _default_sleep(0.25)
         assert recorded == [0.25]
 
-    def test_default_download_video_delegates_to_video_module(self, monkeypatch):
-        import rch.youtube.video as video_module
-
-        sentinel = {"status": True, "result": {"path": "p"}}
+    def test_default_download_video_uses_the_shared_downloader(self, monkeypatch):
+        """RCH no longer has its own yt-dlp path; the harvester and the clipper
+        share one downloader, so this asserts the delegation rather than any
+        option pass-through (that is covered in test_channel_unified_download).
+        """
         seen = {}
 
-        def _fake(url, options):
-            seen["url"] = url
-            seen["options"] = options
-            return sentinel
+        class _Result:
+            path = "p"
+            title = "Judul"
+            duration = 12.0
+            video_id = "a"
 
-        monkeypatch.setattr(video_module, "download", _fake)
-        opts = {"outputDir": "d", "filename": "video"}
-        assert _default_download_video("https://youtu.be/a", opts) is sentinel
+        def _fake_factory():
+            def _call(url, **kwargs):
+                seen["url"] = url
+                seen["kwargs"] = kwargs
+                return _Result()
+
+            return _call
+
+        monkeypatch.setattr(channel_module, "_build_shared_downloader", _fake_factory)
+        envelope = _default_download_video(
+            "https://youtu.be/a", {"outputDir": "d", "filename": "video"}
+        )
+
+        assert envelope["status"] is True
+        assert envelope["path"] == "p"
         assert seen["url"] == "https://youtu.be/a"
-        assert seen["options"] is opts
+        assert seen["kwargs"]["output_dir"] == "d"
 
     def test_default_download_image_uses_core_http(self, monkeypatch):
         import rch.core.http as http_module
@@ -2294,16 +2312,24 @@ class TestDefaultHelpers:
         assert seen["kwargs"]["retries"] == _THUMBNAIL_RETRIES
 
     def test_channel_full_uses_default_download_video_when_unset(self, tmp_path, monkeypatch):
-        import rch.youtube.video as video_module
-
-        def _fake(url, options):
-            out_dir = Path(options["outputDir"])
+        def _fake(url, **kwargs):
+            out_dir = Path(kwargs["output_dir"])
             out_dir.mkdir(parents=True, exist_ok=True)
-            path = out_dir / "video.mp4"
+            path = out_dir / f"{kwargs.get('filename') or 'video'}.mp4"
             path.write_bytes(b"q" * 2)
-            return {"status": True, "result": {"path": str(path)}}
 
-        monkeypatch.setattr(video_module, "download", _fake)
+            class _Result:
+                def __init__(self):
+                    self.path = path
+                    self.title = "Satu"
+                    self.duration = 5.0
+                    self.video_id = "a1"
+
+            return _Result()
+
+        monkeypatch.setattr(
+            channel_module, "_build_shared_downloader", lambda: _fake
+        )
         result = channel_full(
             CHANNEL_URL,
             _full_opts(tmp_path),

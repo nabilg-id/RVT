@@ -639,10 +639,93 @@ def _default_sleep(seconds: float) -> None:
     time.sleep(seconds)
 
 
-def _default_download_video(url: str, options: Dict) -> Dict:
-    from .video import download
+#: Audio formats the harvester can ask for. Anything else means "video".
+_AUDIO_FORMATS = {"mp3", "m4a", "opus", "aac", "wav", "flac"}
 
-    return download(url, options)
+
+def _to_downloader_kwargs(options: Optional[Dict]) -> Dict:
+    """Translate an RCH option dict into the shared downloader's keywords.
+
+    The two modules spell the same settings differently - ``outputDir`` against
+    ``output_dir``, ``subLang`` against ``sub_lang`` - and the downloader takes
+    keyword-only arguments. Passing RCH's spelling straight through would raise
+    ``TypeError: unexpected keyword argument`` for every option, so the rename
+    is the whole job of this function.
+    """
+    opts = options or {}
+    fmt = str(opts.get("format") or _VIDEO_EXTENSION).lower()
+    audio_only = fmt in _AUDIO_FORMATS
+
+    kwargs: Dict = {"audio_only": audio_only}
+    if audio_only:
+        kwargs["audio_format"] = fmt
+    if opts.get("quality"):
+        kwargs["quality"] = opts["quality"]
+    if opts.get("outputDir"):
+        kwargs["output_dir"] = opts["outputDir"]
+    if opts.get("filename"):
+        kwargs["filename"] = opts["filename"]
+    if opts.get("subtitles"):
+        kwargs["subtitles"] = True
+        kwargs["sub_lang"] = opts.get("subLang") or None
+    if opts.get("cookiesBrowser"):
+        kwargs["cookies_browser"] = opts["cookiesBrowser"]
+    if opts.get("limitRate"):
+        kwargs["limit_rate"] = opts["limitRate"]
+    if opts.get("proxy"):
+        kwargs["proxy"] = opts["proxy"]
+    if opts.get("sleepRequests") is not None:
+        kwargs["sleep_requests"] = opts["sleepRequests"]
+    return kwargs
+
+
+def _build_shared_downloader():
+    """Return a callable ``(url, **kwargs) -> DownloadResult``.
+
+    Imported lazily: ``rch`` is usable on its own, and importing the clipper
+    eagerly would drag yt-dlp in at module import time.
+    """
+    from clipper.services.youtube_downloader import YouTubeDownloader
+
+    instance = YouTubeDownloader()
+
+    def _call(url: str, **kwargs):
+        return instance.download(url, **kwargs)
+
+    return _call
+
+
+def _default_download_video(url: str, options: Dict, *,
+                            downloader=None,
+                            downloader_factory=None) -> Dict:
+    """Download one video through the shared clipper downloader.
+
+    Returns the ``{status, message, ...}`` envelope the channel workers already
+    expect. Nothing is raised: the caller runs this inside a per-video worker,
+    where an exception would be recorded as a crash instead of as the one bad
+    video that it actually is.
+    """
+    try:
+        call = downloader if downloader is not None else (
+            downloader_factory or _build_shared_downloader
+        )()
+        result = call(url, **_to_downloader_kwargs(options))
+    except Exception as exc:  # noqa: BLE001 - reported, not propagated
+        message = str(exc) or exc.__class__.__name__
+        return {"status": False, "message": message, "url": url}
+    return {
+        "status": True,
+        "message": None,
+        "url": url,
+        "path": getattr(result, "path", None),
+        "title": getattr(result, "title", None),
+        "duration": getattr(result, "duration", None),
+        "video_id": getattr(result, "video_id", None),
+        # The nested key is what the channel workers have always read, and the
+        # RCH CLI parses it too. Carrying both costs one dict and means this
+        # adapter is not a breaking change for every existing caller.
+        "result": {"path": getattr(result, "path", None)},
+    }
 
 
 def _default_download_image(url: str) -> bytes:
