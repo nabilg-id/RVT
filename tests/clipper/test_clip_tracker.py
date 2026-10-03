@@ -6,6 +6,7 @@ a queued video was waiting at all.
 """
 from __future__ import annotations
 
+import json
 import sys
 import time
 import types
@@ -203,14 +204,15 @@ class TestClipLifecycleEvents:
 
 class TestClipHistoryVideoId:
     def _write(self, tmp_path, line):
-        path = tmp_path / A._RCH_HISTORY_FILE
+        """Write a legacy-format line, which is what these tests exercise."""
+        path = tmp_path / A._LEGACY_HISTORY_FILE
         path.write_text(line + "\n", encoding="utf-8")
         return path
 
     def test_new_line_carries_the_id(self, client, tmp_path, monkeypatch):
         _run(client, monkeypatch, FakeProcessor)
         raw = (tmp_path / A._RCH_HISTORY_FILE).read_text(encoding="utf-8")
-        assert f"id={VIDEO_ID}" in raw
+        assert json.loads(raw.strip())["videoId"] == VIDEO_ID
 
     def test_reader_surfaces_the_id(self, client, tmp_path, monkeypatch):
         _run(client, monkeypatch, FakeProcessor)
@@ -225,7 +227,7 @@ class TestClipHistoryVideoId:
         assert len(rows) == 1
         assert rows[0]["videoId"] is None
         assert rows[0]["title"] == "Judul Lama"
-        assert rows[0]["clips"] == "2"
+        assert rows[0]["clips"] == 2
 
     def test_placeholder_id_is_not_reported(self, client, tmp_path):
         self._write(tmp_path,

@@ -8,6 +8,7 @@ menyediakan antarmuka web, manajemen job, dan lapisan akuisisi dari RCH.
 """
 from __future__ import annotations
 
+import json
 import re
 import threading
 import webbrowser
@@ -43,7 +44,15 @@ DEFAULT_MAX_DURATION = 60
 MIN_CLIPS, MAX_CLIPS = 1, 20
 MIN_SECONDS, MAX_SECONDS = 5, 600
 
-_RCH_HISTORY_FILE = "clip-history.log"
+_RCH_HISTORY_FILE = "clip-history.jsonl"
+
+#: Still read, never written. The old line format could not hold a title with a
+#: pipe or a newline, so the writer rewrote pipes to slashes and cut titles at
+#: sixty characters. See ``_append_history``.
+_LEGACY_HISTORY_FILE = "clip-history.log"
+
+#: Legacy lines have seven fields; an eighth carries the video id.
+_LEGACY_MIN_FIELDS = 7
 
 
 # ---------------------------------------------------------------------------
@@ -201,31 +210,39 @@ def _run_clip_job(job: Job, payload: dict) -> None:
 
 
 def _append_history(payload: dict, job: Job) -> None:
-    """Catat satu baris riwayat clip di ``clip-history.log``.
+    """Catat satu run clip di ``clip-history.jsonl``.
 
-    ``videoId`` ditulis sebagai field terakhir supaya baris lama yang hanya
-    punya tujuh field tetap terbaca oleh :func:`read_history`.
+    JSON Lines, satu objek per baris, ditambahkan tanpa menulis ulang berkas -
+    append tidak boleh berarti rewrite, karena run yang terputus di tengah akan
+    mengorhankan seluruh riwayat.
+
+    Format lama menyimpan judul sebagai field teks di dalam baris pipe-delimited,
+    sehingga judul yang mengandung pipe harus ditulis ulang jadi garis miring dan
+    judul panjang dipotong enam puluh karakter. Field yang dipakai orang untuk
+    mengenali sebuah clip justru yang paling liable dirusak.sekarang tersimpan
+    apa adanya; tidak ada lagi yang perlu di-escape.
     """
     from datetime import datetime, timezone
 
     stamp = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
-    parts = [
-        stamp,
-        payload["style"],
-        f"clips={len(job.outputs)}",
-        f"min={payload['minDur']}",
-        f"max={payload['maxDur']}",
-        job.status,
-        (job.title or "-").replace("|", "/")[:60],
-    ]
-    video_id = getattr(job, "video_id", None) or _clip_video_id(payload)
-    parts.append(f"id={video_id}" if video_id else "id=-")
-    line = " | ".join(parts)
+    record = {
+        "timestamp": stamp,
+        "style": payload.get("style"),
+        "clips": len(job.outputs or []),
+        "minDur": payload.get("minDur"),
+        "maxDur": payload.get("maxDur"),
+        "status": job.status,
+        "title": job.title,
+        "videoId": getattr(job, "video_id", None) or _clip_video_id(payload),
+        "files": list(job.outputs or []),
+    }
     try:
         TEMP_DIR.mkdir(parents=True, exist_ok=True)
         with open(TEMP_DIR / _RCH_HISTORY_FILE, "a", encoding="utf-8", newline="\n") as fh:
-            fh.write(line + "\n")
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
     except OSError:
+        # Riwayat adalah kenyamanan. Kehilangan satu baris tidak boleh costing
+        # clip milik pengguna, jadi penulisan ini sengaja best-effort.
         pass
 
 
@@ -233,36 +250,103 @@ def _strip_prefix(value: str, prefix: str) -> str:
     return value[len(prefix):] if value.startswith(prefix) else value
 
 
+def _to_int(value) -> int:
+    """Coerce a count that may have been stored as text.
+
+    The legacy line format stored ``clips=2``, so records read from it arrive as
+    strings. Normalising here means the API hands the table a number either way
+    instead of the caller having to know which file a row came from.
+    """
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return 0
+
+
+def _history_view(record: dict) -> dict:
+    """Project a stored record onto the shape ``app.js`` renders.
+
+    ``range`` stays a formatted string because it is display text, but the
+    underlying numbers are real ones rather than the digits scraped out of
+    ``min=20``.
+    """
+    low = record.get("minDur")
+    high = record.get("maxDur")
+    video_id = record.get("videoId")
+    return {
+        "timestamp": record.get("timestamp"),
+        "style": record.get("style"),
+        "clips": _to_int(record.get("clips")),
+        "range": f"{low}–{high}s",
+        "status": record.get("status"),
+        "title": record.get("title"),
+        "videoId": video_id if video_id else None,
+    }
+
+
+def _parse_legacy_line(line: str) -> Optional[dict]:
+    """Read one legacy ``clip-history.log`` line into a stored-shape record."""
+    parts = [p.strip() for p in str(line).split("|")]
+    if len(parts) < _LEGACY_MIN_FIELDS:
+        return None
+    record = {
+        "timestamp": parts[0],
+        "style": parts[1],
+        "clips": _strip_prefix(parts[2], "clips="),
+        "minDur": _strip_prefix(parts[3], "min="),
+        "maxDur": _strip_prefix(parts[4], "max="),
+        "status": parts[5],
+        "title": parts[6],
+        "videoId": None,
+    }
+    if len(parts) > _LEGACY_MIN_FIELDS:
+        raw = _strip_prefix(parts[7], "id=")
+        if raw and raw != "-":
+            record["videoId"] = raw
+    return record
+
+
 def read_history(limit: int = 20) -> list:
     """Baca riwayat clip, terbaru lebih dulu.
 
-    Baris lama punya tujuh field dan tidak menyebut video id; field kedelapan
-    ``id=`` hanya ada pada run yang lebih baru dan dibaca kalau ada.
+    Dua berkas dibaca: ``history.jsonl`` yang sekarang dan ``clip-history.log``
+    yang lama. Yang lama dibaca lebih dulu karena isinya lebih tua, jadi folder
+    yang sudah punya riwayat tidak tampak kosong begitu format baru mulai
+    ditulis di sana.
     """
-    path = TEMP_DIR / _RCH_HISTORY_FILE
-    if not path.exists():
-        return []
     rows = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        parts = [p.strip() for p in line.split("|")]
-        if len(parts) < 7:
-            continue
-        row = {
-            "timestamp": parts[0],
-            "style": parts[1],
-            "clips": _strip_prefix(parts[2], "clips="),
-            "range": f"{_strip_prefix(parts[3], 'min=')}–{_strip_prefix(parts[4], 'max=')}s",
-            "status": parts[5],
-            "title": parts[6],
-            "videoId": None,
-        }
-        if len(parts) > 7:
-            raw = _strip_prefix(parts[7], "id=")
-            if raw and raw != "-":
-                row["videoId"] = raw
-        rows.append(row)
+
+    legacy = TEMP_DIR / _LEGACY_HISTORY_FILE
+    if legacy.exists():
+        try:
+            for line in legacy.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                record = _parse_legacy_line(line)
+                if record is not None:
+                    rows.append(_history_view(record))
+        except OSError:
+            pass
+
+    current = TEMP_DIR / _RCH_HISTORY_FILE
+    if current.exists():
+        try:
+            text = current.read_text(encoding="utf-8")
+        except OSError:
+            text = ""
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except ValueError:
+                # Baris terpotong di tengah adalah apa yang tersisa dari run
+                # yang dibunuh, jadi ini diharapkan dan tidak boleh menutupi
+                # entri di sekitarnya.
+                continue
+            if isinstance(record, dict):
+                rows.append(_history_view(record))
+
     rows.reverse()
     return rows[:limit]
 

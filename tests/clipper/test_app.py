@@ -371,7 +371,7 @@ class TestHistory:
         )
         rows = A.read_history()
         assert rows[0]["style"] == "clean_white"
-        assert rows[0]["clips"] == "3"
+        assert rows[0]["clips"] == 3
         assert rows[0]["range"] == "20–60s"
 
     def test_history_skips_malformed_lines(self, client, tmp_path):
@@ -393,11 +393,13 @@ class TestHistory:
         assert len(A.read_history(limit=3)) == 3
 
     def test_pipe_in_title_does_not_break_the_record(self, client, tmp_path):
+        """The title used to be rewritten to slashes before it could be stored,
+        so what the table showed was never the real title."""
         A._append_history({"style": "s", "minDur": 1, "maxDur": 2},
                           types.SimpleNamespace(outputs=[], status="done", title="A | B"))
         rows = A.read_history()
         assert len(rows) == 1
-        assert rows[0]["title"] == "A / B"
+        assert rows[0]["title"] == "A | B"
 
 
 class TestPreview:
