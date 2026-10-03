@@ -11,6 +11,7 @@ subprocess, no clock.
 """
 from __future__ import annotations
 
+import json
 import sys
 import types
 from pathlib import Path
@@ -1287,12 +1288,13 @@ class TestChannelFullHappyPath:
             sleep=_FakeSleep(),
         )
         folder = Path(result["result"]["workDir"], "satu")
-        assert folder.joinpath("deskripsi.txt").read_text(encoding="utf-8") == "isi"
-        assert folder.joinpath("link.txt").read_text(encoding="utf-8") == \
-            "https://youtu.be/a1"
+        meta = json.loads(folder.joinpath("metadata.json").read_text(encoding="utf-8"))
+        assert meta["description"] == "isi"
+        assert meta["url"] == "https://youtu.be/a1"
         assert folder.joinpath("thumbnail.jpg").exists()
 
-    def test_empty_description_becomes_empty_file(self, tmp_path):
+    def test_empty_description_stays_empty_and_is_not_unavailable(self, tmp_path):
+        """A real video with no description is not the same as a missing one."""
         result = channel_full(
             CHANNEL_URL,
             _full_opts(tmp_path),
@@ -1303,9 +1305,11 @@ class TestChannelFullHappyPath:
             sleep=_FakeSleep(),
         )
         folder = Path(result["result"]["workDir"], "satu")
-        assert folder.joinpath("deskripsi.txt").read_text(encoding="utf-8") == ""
+        meta = json.loads(folder.joinpath("metadata.json").read_text(encoding="utf-8"))
+        assert meta["description"] == ""
+        assert meta["unavailable"] is False
 
-    def test_zip_contains_video_thumbnail_description_and_link(self, tmp_path):
+    def test_zip_contains_video_thumbnail_and_metadata(self, tmp_path):
         import zipfile
 
         result = channel_full(
@@ -1320,7 +1324,7 @@ class TestChannelFullHappyPath:
         with zipfile.ZipFile(result["result"]["zipPath"]) as zf:
             names = set(zf.namelist())
         assert names == {"satu/video.mp4", "satu/thumbnail.jpg",
-                         "satu/deskripsi.txt", "satu/link.txt"}
+                         "satu/metadata.json"}
 
     def test_zip_name_defaults_to_full_suffix(self, tmp_path):
         result = channel_full(
@@ -1400,8 +1404,8 @@ class TestChannelFullHappyPath:
             sleep=_FakeSleep(),
         )
         work_dir = Path(result["result"]["workDir"])
-        assert (work_dir / "sama-a1" / "link.txt").exists()
-        assert (work_dir / "sama-b2" / "link.txt").exists()
+        assert (work_dir / "sama-a1" / "metadata.json").exists()
+        assert (work_dir / "sama-b2" / "metadata.json").exists()
 
     def test_multiple_concurrency_processes_all(self, tmp_path):
         result = channel_full(
@@ -1463,9 +1467,9 @@ class TestChannelFullUnavailable:
             sleep=_FakeSleep(),
         )
         folder = Path(result["result"]["workDir"], "unavailable-gone")
-        assert folder.joinpath("deskripsi.txt").read_text(encoding="utf-8") == \
-            _UNAVAILABLE_DESCRIPTION
-        assert folder.joinpath("link.txt").exists()
+        meta = json.loads(folder.joinpath("metadata.json").read_text(encoding="utf-8"))
+        assert meta["description"] == _UNAVAILABLE_DESCRIPTION
+        assert meta["unavailable"] is True
 
     def test_unavailable_zip_excludes_video_entry(self, tmp_path):
         import zipfile
@@ -1483,7 +1487,7 @@ class TestChannelFullUnavailable:
             names = set(zf.namelist())
         assert "unavailable-gone/video.mp4" not in names
         assert "unavailable-gone/thumbnail.jpg" in names
-        assert "unavailable-gone/link.txt" in names
+        assert "unavailable-gone/metadata.json" in names
 
     def test_unavailable_videos_not_retried(self, tmp_path):
         downloader = _FakeDownload()
@@ -1530,7 +1534,7 @@ class TestChannelFullThumbnailAndVideoFailure:
         with zipfile.ZipFile(result["result"]["zipPath"]) as zf:
             names = set(zf.namelist())
         assert "satu/thumbnail.jpg" not in names
-        assert "satu/deskripsi.txt" in names
+        assert "satu/metadata.json" in names
 
     def test_video_failure_recorded_with_error(self, tmp_path):
         result = channel_full(
@@ -1972,8 +1976,7 @@ class TestChannelInfo:
         )
         with zipfile.ZipFile(result["result"]["zipPath"]) as zf:
             names = set(zf.namelist())
-        assert names == {"satu/thumbnail.jpg", "satu/deskripsi.txt",
-                         "satu/link.txt"}
+        assert names == {"satu/thumbnail.jpg", "satu/metadata.json"}
 
     def test_info_mode_unavailable_counted(self, tmp_path):
         result = channel_info(

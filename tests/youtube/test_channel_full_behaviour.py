@@ -120,9 +120,12 @@ class TestMetadataFiles:
             download_image=_FakeImage(), sleep=_FakeSleep(),
         )
 
-        folder = _work_dir(tmp_path) / "judul-a1"
-        assert (folder / "deskripsi.txt").read_text(encoding="utf-8") == "Deskripsi a1"
-        assert (folder / "link.txt").read_text(encoding="utf-8").endswith("a1")
+        data = json.loads(
+            (_work_dir(tmp_path) / "judul-a1" / "metadata.json")
+            .read_text(encoding="utf-8")
+        )
+        assert data["description"] == "Deskripsi a1"
+        assert data["url"].endswith("a1")
 
     def test_thumbnail_is_saved_next_to_them(self, tmp_path):
         channel_full(
@@ -186,7 +189,7 @@ class TestIsolation:
         )
 
         folder = _work_dir(tmp_path) / "judul-a1"
-        assert (folder / "deskripsi.txt").exists()
+        assert (folder / "metadata.json").exists()
         assert not (folder / "video.mp4").exists()
 
     def test_every_video_failing_is_still_a_200_envelope(self, tmp_path):
@@ -217,7 +220,7 @@ class TestArchive:
 
         import zipfile
         names = zipfile.ZipFile(zips[0]).namelist()
-        assert any(n.endswith("deskripsi.txt") for n in names)
+        assert any(n.endswith("metadata.json") for n in names)
         assert any(n.endswith("thumbnail.jpg") for n in names)
 
 
@@ -239,7 +242,7 @@ class TestNoVideoMode:
 
         assert called == []
         folder = _work_dir(tmp_path) / "judul-a1"
-        assert (folder / "deskripsi.txt").exists()
+        assert (folder / "metadata.json").exists()
         assert not (folder / "video.mp4").exists()
         assert result["result"]["success"] == 1
 

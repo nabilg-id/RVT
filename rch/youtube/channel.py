@@ -8,6 +8,7 @@ injectable so the orchestration is testable without network or subprocesses.
 """
 from __future__ import annotations
 
+import json
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -30,8 +31,6 @@ _VIDEO_EXTENSION = "mp4"
 _VIDEO_ARCNAME = "video.mp4"
 _SHORTS_DIR_SUFFIX = "-shorts"
 _THUMB_FILENAME = "thumbnail.jpg"
-_DESCRIPTION_FILENAME = "deskripsi.txt"
-_LINK_FILENAME = "link.txt"
 _UNAVAILABLE_PREFIX = "unavailable"
 _FALLBACK_CHANNEL_SLUG = "channel"
 _MAX_SLUG_LEN = 100
@@ -788,12 +787,48 @@ def _full_item(info: Dict, video_id: str, *, video_ok: bool, thumb_ok: bool,
     }
 
 
+#: One JSON file per video, replacing the old deskripsi.txt + link.txt pair.
+#: Two text files held the description and the link and nothing else, so a
+#: consumer read two files to learn two fields and had no way to tell a video
+#: with an empty description from one whose metadata was never fetched.
+METADATA_FILENAME = "metadata.json"
+
+
+def _metadata_payload(info: Dict, video_id: str, unavailable: bool,
+                       size: str = _DEFAULT_SIZE) -> Dict:
+    """Assemble the per-video metadata document."""
+    description = _UNAVAILABLE_DESCRIPTION if unavailable \
+        else (info.get("description") or "")
+    return {
+        "id": video_id,
+        # The short form is what link.txt held, so the tracker backfill reads
+        # both layouts identically. The long form is what a browser wants.
+        "url": watch_url(video_id),
+        "watchUrl": f"https://www.youtube.com/watch?v={video_id}",
+        "title": info.get("title"),
+        "description": description,
+        "duration": info.get("duration"),
+        "uploadDate": info.get("uploadDate"),
+        "thumbnail": {
+            "file": _THUMB_FILENAME,
+            "size": size,
+            "url": thumbnail_url(video_id, size),
+        },
+        "unavailable": bool(unavailable),
+    }
+
+
 def _write_sidecar_files(folder_path: Path, info: Dict, video_id: str,
                          unavailable: bool) -> None:
-    """Write ``deskripsi.txt`` and ``link.txt`` for one video folder."""
-    description = _UNAVAILABLE_DESCRIPTION if unavailable else (info.get("description") or "")
-    (folder_path / _DESCRIPTION_FILENAME).write_text(description, encoding="utf-8")
-    (folder_path / _LINK_FILENAME).write_text(watch_url(video_id), encoding="utf-8")
+    """Write ``metadata.json`` for one video folder.
+
+    Kept under its historical name because it is still "the sidecar metadata
+    for this folder"; only the format changed.
+    """
+    payload = _metadata_payload(info, video_id, unavailable)
+    (folder_path / METADATA_FILENAME).write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
 
 
 def _fetch_thumbnail(video_id: str, size: str, folder_path: Path,
@@ -819,10 +854,11 @@ def channel_full(channel_url: str, options: Optional[Dict] = None, *,
     """Harvest video, thumbnail, description, and link for every channel video.
 
     The richest of the three modes: each video folder receives ``video.mp4``,
-    ``thumbnail.jpg``, ``deskripsi.txt``, and ``link.txt``, all zipped together.
-    Videos whose metadata carries no title are treated as unavailable — they
-    still get thumbnail/description/link entries but no video download, and are
-    counted separately in the aggregate report.
+    ``thumbnail.jpg``, and a ``metadata.json`` holding the title, description,
+    link, duration, upload date, and thumbnail, all zipped together. Videos
+    whose metadata carries no title are treated as unavailable — they still get
+    thumbnail/metadata entries but no video download, and are counted
+    separately in the aggregate report.
 
     Never raises for per-video failures; those land on the item's ``error``.
     """
@@ -938,10 +974,8 @@ def channel_full(channel_url: str, options: Optional[Dict] = None, *,
         if thumb_ok:
             zip_stream.add_file(str(folder_path / _THUMB_FILENAME),
                                 f"{base_zip}{_THUMB_FILENAME}")
-        zip_stream.add_file(str(folder_path / _DESCRIPTION_FILENAME),
-                            f"{base_zip}{_DESCRIPTION_FILENAME}")
-        zip_stream.add_file(str(folder_path / _LINK_FILENAME),
-                            f"{base_zip}{_LINK_FILENAME}")
+        zip_stream.add_file(str(folder_path / METADATA_FILENAME),
+                            f"{base_zip}{METADATA_FILENAME}")
 
         error = None if (include_video and not unavailable
                          and envelope.get("status")) else envelope.get("message")
