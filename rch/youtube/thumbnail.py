@@ -86,15 +86,24 @@ def download_thumbnail(url: str, *, size="maxresdefault", output_dir="./download
     if size not in THUMBNAIL_SIZES:
         return {"status": False, "message": f"Invalid thumbnail size: {size}"}
 
-    title = _resolve_title(video_id, fetch_title)
+    # The title is only needed to build a filename. When the caller supplied one,
+    # fetching it was a wasted round trip to YouTube's oEmbed endpoint - and in
+    # tests it was the reason twenty cases quietly reached the network, since
+    # stubbing http_get alone did not cover the title lookup.
+    if filename is None:
+        title = _resolve_title(video_id, fetch_title)
+        target_name = f"{slugify(title)}-{size}.jpg"
+    else:
+        title = None
+        target_name = filename
 
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     base = out_dir.resolve()
-    file_path = (out_dir / (filename or f"{slugify(title)}-{size}.jpg")).resolve()
+    file_path = (out_dir / target_name).resolve()
     if file_path.parent != base:
-        return {"status": False, "message": f"Invalid filename: {filename}"}
+        return {"status": False, "message": f"Invalid filename: {target_name}"}
 
     if http_get is None:
         from ..core.http import http_get as _default_http_get

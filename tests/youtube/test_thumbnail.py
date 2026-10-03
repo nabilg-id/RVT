@@ -22,6 +22,22 @@ from rch.youtube.thumbnail import (
 VIDEO_ID = "dQw4w9WgXcQ"
 
 
+@pytest.fixture(autouse=True)
+def _offline_title_lookup(monkeypatch):
+    """Stop the default title lookup from reaching oEmbed.
+
+    ``_resolve_title`` imports ``get_title`` lazily when no ``fetch_title`` is
+    passed, so patching the source module is enough. Three tests here did not
+    pass one and were quietly talking to youtube.com; anything added later
+    inherits the same protection.
+    """
+    import rch.youtube.video as video_mod
+
+    monkeypatch.setattr(
+        video_mod, "get_title", lambda video_id: f"Judul {video_id}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # thumbnail_url — pure URL builder
 # ---------------------------------------------------------------------------

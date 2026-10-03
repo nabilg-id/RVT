@@ -57,16 +57,51 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(A, "OUTPUT_DIR", tmp_path / "clips")
     with A.app.test_client() as c:
         yield c
+    _drain_jobs()
     with A._JOB_LOCK:
         A._JOBS.clear()
 
 
-@pytest.fixture()
-def stub_processor(monkeypatch):
+def _drain_jobs(timeout=10.0):
+    """Hold the teardown until no worker thread is still running.
+
+    A clip job runs in the background and reads module state the next test is
+    about to replace. One that outlives its test turns the processor stubs into
+    a coin flip, and a real VideoProcessor built at that moment reaches out to
+    huggingface.co for a Whisper model.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        with A._JOB_LOCK:
+            pending = [j for j in A._JOBS.values() if j.status == "running"]
+        if not pending:
+            return
+        time.sleep(0.02)
+    raise AssertionError("a clip job thread outlived its test")
+
+
+def _stub_processor(monkeypatch, processor_cls):
+    """Put a fake VideoProcessor into ``sys.modules`` for one test.
+
+    A ``sys.modules`` entry, not a patch of the real module: importing
+    ``clipper.services.video_processor`` pulls in yt-dlp, which does not import
+    at all on Python 3.14 (``TypeError: function() argument 'code' must be
+    code, not str``). The stub is the only way to test this without the media
+    stack.
+
+    ``clipper/app.py`` imports VideoProcessor inside the worker function, so the
+    import lands on a background thread that can outlive monkeypatch teardown.
+    ``_drain_jobs`` in the ``client`` fixture is what closes that window.
+    """
     mod = types.ModuleType("clipper.services.video_processor")
-    mod.VideoProcessor = FakeProcessor
+    mod.VideoProcessor = processor_cls
     monkeypatch.setitem(sys.modules, "clipper.services.video_processor", mod)
     return mod
+
+
+@pytest.fixture()
+def stub_processor(monkeypatch):
+    return _stub_processor(monkeypatch, FakeProcessor)
 
 
 def _wait(client, job_id, tries=100):
@@ -266,9 +301,7 @@ class TestJobLifecycle:
         assert _wait(client, job_id)["status"] != "running"
 
     def test_pipeline_failure_becomes_job_error(self, client, monkeypatch):
-        mod = types.ModuleType("clipper.services.video_processor")
-        mod.VideoProcessor = BoomProcessor
-        monkeypatch.setitem(sys.modules, "clipper.services.video_processor", mod)
+        _stub_processor(monkeypatch, BoomProcessor)
 
         job_id = client.post("/api/clip", json={"url": VIDEO_URL}).get_json()["jobId"]
         payload = _wait(client, job_id)
@@ -354,12 +387,19 @@ class TestPreview:
         assert client.post("/api/preview", json={"url": "https://example.com"}).status_code == 400
 
     def test_preview_returns_id_for_valid_url(self, client, monkeypatch):
-        from .common_stub import stub_thumbnail
+        from .common_stub import stub_metadata, stub_thumbnail
 
         stub_thumbnail(monkeypatch)
+        # Without this, get_video_info spawns a yt-dlp subprocess and this
+        # test takes 7.7 seconds waiting on YouTube.
+        stub_metadata(monkeypatch)
         r = client.post("/api/preview", json={"url": VIDEO_URL})
         assert r.status_code == 200
-        assert r.get_json()["id"] == "dQw4w9WgXcQ"
+        payload = r.get_json()
+        assert payload["id"] == "dQw4w9WgXcQ"
+        assert payload["duration"] == 212
+        assert payload["uploadDate"] == "20240102"
+        assert "warning" not in payload
 
     def test_preview_survives_metadata_failure(self, client, monkeypatch):
         from .common_stub import stub_metadata_boom, stub_thumbnail

@@ -47,11 +47,48 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(A, "OUTPUT_DIR", tmp_path / "clips")
     with A.app.test_client() as c:
         yield c
+    _drain_jobs()
     with A._JOB_LOCK:
         A._JOBS.clear()
 
 
+def _drain_jobs(timeout=10.0):
+    """Wait for every worker thread to finish before the test tears down.
+
+    A clip job runs on a background thread that reads module state the next test
+    is about to change. Letting one outlive the test turns this file's stubs into
+    a coin flip, so the fixture holds here until nothing is running. Checking
+    ``status != "running"`` is not enough on its own - a job that has not been
+    marked running yet still counts as pending.
+    """
+    import time
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        with A._JOB_LOCK:
+            pending = [j for j in A._JOBS.values() if j.status == "running"]
+        if not pending:
+            return
+        time.sleep(0.02)
+    raise AssertionError("a clip job thread outlived its test")
+
+
 def _install(monkeypatch, processor_cls):
+    """Swap a fake VideoProcessor into ``sys.modules`` for one test.
+
+    A ``sys.modules`` entry rather than a patch of the real module, and that is
+    not a shortcut: importing ``clipper.services.video_processor`` pulls in
+    yt-dlp, which does not import at all on Python 3.14 (it trips
+    ``TypeError: function() argument 'code' must be code, not str``). The stub
+    is the only way to run these tests without the media stack.
+
+    Because ``clipper/app.py`` imports VideoProcessor inside the worker
+    function, the import happens on a background thread, and a stub can be torn
+    down before that thread reaches it - which is how a real VideoProcessor
+    once got built here and reached huggingface.co for a Whisper model. The
+    ``client`` fixture's ``_drain_jobs`` is what closes that window: it holds
+    teardown until no job is still running.
+    """
     mod = types.ModuleType("clipper.services.video_processor")
     mod.VideoProcessor = processor_cls
     monkeypatch.setitem(sys.modules, "clipper.services.video_processor", mod)
