@@ -12,6 +12,7 @@ import json
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
@@ -1009,6 +1010,10 @@ def channel_full(channel_url: str, options: Optional[Dict] = None, *,
                             subtitles, sub_lang, downloader, sleeper, zip_stream,
                             on_phase, key="videoOk", unavailable_key="unavailable")
 
+    _write_manifest(work_dir, channel_url, source_url, results, meta_map,
+                    slug_counts, size, include_video)
+
+    zip_stream.add_file(str(work_dir / MANIFEST_FILENAME), MANIFEST_FILENAME)
     zip_stream.finalize()
 
     success = len([r for r in results if r["videoOk"]])
@@ -1035,6 +1040,86 @@ def channel_full(channel_url: str, options: Optional[Dict] = None, *,
             "items": results,
         },
     }
+
+
+#: One file listing every video in the run, written next to the per-video
+#: folders and into the archive. Each ``metadata.json`` answers "open this one
+#: video"; the manifest answers "what is in this channel" without walking several
+#: hundred folders first.
+MANIFEST_FILENAME = "manifest.json"
+
+#: Bumped when the manifest's shape changes, so a consumer can tell what it is
+#: holding. The file outlives the version that wrote it.
+_MANIFEST_SCHEMA = 1
+
+
+def _manifest_row(item: Dict, info: Dict, folder_name: str,
+                  include_video: bool = True) -> Dict:
+    """One video as the manifest records it.
+
+    ``videoOk`` is reported as false in metadata-only mode. Upstream,
+    ``videoOk`` means "this row had no error", which is true when the video was
+    never asked for - so passing it straight through would claim every video was
+    downloaded in a run that deliberately downloaded none.
+    """
+    video_id = item.get("videoId")
+    payload = _metadata_payload(info or {}, video_id, bool(item.get("unavailable")))
+    return {
+        "id": video_id,
+        "title": payload["title"],
+        "url": payload["url"],
+        "watchUrl": payload["watchUrl"],
+        "folder": folder_name,
+        "description": payload["description"],
+        "duration": payload["duration"],
+        "uploadDate": payload["uploadDate"],
+        "thumbnails": [{"file": "thumbnail.jpg", "size": payload["thumbnail"]["size"],
+                        "url": payload["thumbnail"]["url"]}],
+        "videoOk": bool(item.get("videoOk")) if include_video else False,
+        "thumbOk": bool(item.get("thumbOk")),
+        "available": not bool(item.get("unavailable")),
+        "unavailable": item.get("unavailable"),
+        "error": item.get("error"),
+    }
+
+
+def _write_manifest(work_dir: Path, channel_url: str, source_url: str,
+                    results: List[Dict], meta_map: Dict[str, Dict],
+                    slug_counts: Dict[str, int], size: str,
+                    include_video: bool = True) -> None:
+    """Write the run manifest and return its path."""
+    rows = []
+    for item in results:
+        video_id = item.get("videoId")
+        info = meta_map.get(video_id) or {"id": video_id, "title": None,
+                                          "description": ""}
+        folder_name = folder_name_for(video_id, info.get("title"), slug_counts)
+        rows.append(_manifest_row(item, info, folder_name, include_video))
+
+    # Title order, with the untitled ones last so the head of the list is the
+    # part a reader actually reads.
+    rows.sort(key=lambda r: ((r["title"] or "").lower() == "", r["title"] or ""))
+
+    manifest = {
+        "schema": _MANIFEST_SCHEMA,
+        "channel": channel_url,
+        "source": source_url,
+        "generatedAt": datetime.now(timezone.utc).astimezone().isoformat(
+            timespec="seconds"),
+        "counts": {
+            "total": len(rows),
+            "withThumbnail": len([r for r in rows if r["thumbOk"]]),
+            "withVideo": len([r for r in rows if r["videoOk"]]),
+            "unavailable": len([r for r in rows if not r["available"]]),
+            "failed": len([r for r in rows if r["error"]]),
+        },
+        "thumbnailSizes": [size],
+        "videos": rows,
+    }
+    (work_dir / MANIFEST_FILENAME).write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False, default=str),
+        encoding="utf-8",
+    )
 
 
 def channel_info(channel_url: str, options: Optional[Dict] = None, **kwargs) -> Dict:

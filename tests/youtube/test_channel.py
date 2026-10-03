@@ -1324,7 +1324,7 @@ class TestChannelFullHappyPath:
         with zipfile.ZipFile(result["result"]["zipPath"]) as zf:
             names = set(zf.namelist())
         assert names == {"satu/video.mp4", "satu/thumbnail.jpg",
-                         "satu/metadata.json"}
+                         "satu/metadata.json", "manifest.json"}
 
     def test_zip_name_defaults_to_full_suffix(self, tmp_path):
         result = channel_full(
@@ -1976,7 +1976,8 @@ class TestChannelInfo:
         )
         with zipfile.ZipFile(result["result"]["zipPath"]) as zf:
             names = set(zf.namelist())
-        assert names == {"satu/thumbnail.jpg", "satu/metadata.json"}
+        assert names == {"satu/thumbnail.jpg", "satu/metadata.json",
+                         "manifest.json"}
 
     def test_info_mode_unavailable_counted(self, tmp_path):
         result = channel_info(
