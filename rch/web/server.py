@@ -9,7 +9,6 @@ wildcard bind would expose an unauthenticated downloader to the network.
 """
 from __future__ import annotations
 
-import copy
 import threading
 import webbrowser
 from typing import Any, Dict, Optional
@@ -17,6 +16,21 @@ from urllib.parse import urlsplit
 
 from flask import Flask, g, jsonify, render_template, request
 
+from ..core.jobs import (
+    append_item as jobs_append,
+)
+from ..core.jobs import (
+    create_job as jobs_create,
+)
+from ..core.jobs import (
+    prune as jobs_prune,
+)
+from ..core.jobs import (
+    snapshot as jobs_snapshot,
+)
+from ..core.jobs import (
+    update as jobs_update,
+)
 from ..core.paths import default_downloads_dir
 
 DEFAULT_HOST = "127.0.0.1"
@@ -155,9 +169,7 @@ def _emitter(job_id: int):
 
     def update(**fields) -> None:
         with _JOB_LOCK:
-            job = _JOBS.get(job_id)
-            if job is not None:
-                job.update(fields)
+            jobs_update(_JOBS, job_id, **fields)
 
     def on_progress(payload) -> None:
         data = payload or {}
@@ -173,10 +185,7 @@ def _emitter(job_id: int):
         row = _row({"videoId": data.get("id"), "title": data.get("title", ""),
                     "ok": bool(data.get("ok")), "error": data.get("error")})
         with _JOB_LOCK:
-            job = _JOBS.get(job_id)
-            if job is None:
-                return
-            job["items"].append(row)
+            jobs_append(_JOBS, job_id, row)
 
     emitter = create_emitter()
     emitter.on("progress", on_progress)
@@ -189,22 +198,18 @@ def _start_channel_job(fn, link: str, options: Dict[str, Any]) -> int:
     """Allocate a job id, bind a progress emitter to it, then start the work."""
     job_id = _next_job_id()
     with _JOB_LOCK:
-        _JOBS[job_id] = {
-            "status": "running",
-            "progress": 0,
-            "phase": "Mulai",
-            "items": [],
-            "result": None,
-            "error": None,
-        }
+        jobs_create(_JOBS, job_id)
 
     emitter = _emitter(job_id)
 
     def finish(**fields) -> None:
         with _JOB_LOCK:
-            job = _JOBS.get(job_id)
-            if job is not None:
-                job.update(fields)
+            jobs_update(_JOBS, job_id, **fields)
+            # Make room as soon as a run lands. The registry is unbounded
+            # otherwise, and each record holds every per-video row it collected -
+            # a server left running for a week would carry every harvest it had
+            # ever done.
+            jobs_prune(_JOBS)
 
     def target() -> None:
         try:
@@ -329,22 +334,29 @@ def api_channel_full():
 @app.route("/api/status/<int:job_id>")
 def api_status(job_id: int):
     with _JOB_LOCK:
-        job = _JOBS.get(job_id)
-        if job is None:
+        snapshot = jobs_snapshot(_JOBS, job_id)
+        if snapshot is None:
             return jsonify({"error": "Job tidak ditemukan"}), 404
-        snapshot = _snapshot(job)
     return jsonify(snapshot)
 
 
 def _snapshot(job: Dict[str, Any]) -> Dict[str, Any]:
-    """Return a deep, detached copy of a job record.
+    """Deprecated shim kept for callers that pass a record in directly.
 
-    The record's ``items`` list is appended to by worker threads while the
-    response is serialised, so a shallow ``dict(job)`` would hand ``jsonify``
-    a list that can grow mid-iteration and render a torn row. A deep copy
-    freezes the state at the moment the lock is released.
+    The registry now owns snapshots in :func:`rch.core.jobs.snapshot`, which
+    copies only the ``items`` list. A deep copy was only ever needed because that
+    list grows while the response is serialised - and rows are appended, never
+    mutated, so a list copy is enough. Deep-copying every row on every poll was
+    the single most expensive thing this endpoint did.
     """
-    return copy.deepcopy(job)
+    snap = dict(job)
+    snap["items"] = list(job.get("items") or [])
+    result = job.get("result")
+    if isinstance(result, dict) and isinstance(result.get("items"), list):
+        result = dict(result)
+        result["items"] = list(result["items"])
+        snap["result"] = result
+    return snap
 
 
 @app.route("/api/history")
