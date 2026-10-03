@@ -16,13 +16,14 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import urlsplit
 
-from flask import Flask, jsonify, render_template, request, send_from_directory
+from flask import Flask, g, jsonify, render_template, request, send_from_directory
 
 from rch.core.jobs import append_item as jobs_append
 from rch.core.jobs import create_job as jobs_create
 from rch.core.jobs import detach as jobs_detach
 from rch.core.jobs import prune as jobs_prune
 from rch.core.jobs import update as jobs_update
+from rch.core.paths import default_downloads_dir
 
 from .config import (
     OUTPUT_DIR,
@@ -604,6 +605,265 @@ def _set_queue(video_id, *, queued: bool) -> tuple:
 @app.route("/clips/<path:name>")
 def serve_clip(name: str):
     return send_from_directory(str(OUTPUT_DIR), name, conditional=True)
+
+
+# ---------------------------------------------------------------------------
+# Download routes
+#
+# Moved here from the harvester's own Flask app so one process serves the whole
+# tool. They share this app's job registry and /api/status, which is what makes
+# a job id mean one job across both halves.
+# ---------------------------------------------------------------------------
+
+DEFAULT_OUT = str(default_downloads_dir())
+
+
+def _body() -> Dict[str, Any]:
+    return request.get_json(silent=True) or {}
+
+
+def _link() -> str:
+    """The requested URL, treating whitespace-only input as absent."""
+    raw = _body().get("url") or _body().get("link") or ""
+    return str(raw).strip()
+
+
+def _result_row(item: Dict[str, Any]) -> Dict[str, Any]:
+    """Reduce one engine result item to the fields the status table renders.
+
+    ``channel-video`` items carry ``ok`` while ``channel-full`` and
+    ``channel-info`` items carry ``videoOk``; both land on ``ok`` because the
+    table labels every row from that one field.
+    """
+    ok = item.get("ok")
+    if ok is None:
+        ok = item.get("videoOk")
+    video_id = item.get("videoId") or item.get("id")
+    return {
+        "ok": ok,
+        "videoId": video_id,
+        "title": item.get("title") or "",
+        "error": item.get("error") or "",
+    }
+
+
+def _summarise(result: Any) -> Any:
+    """Reduce a full engine result to the fields the status table renders."""
+    if not isinstance(result, dict):
+        return result
+    if not result.get("status"):
+        return {"message": result.get("message", "Gagal")}
+    res = result.get("result", {})
+    if not isinstance(res, dict):
+        return res
+    return {
+        "total": res.get("total"),
+        "success": res.get("success"),
+        "failed": res.get("failed"),
+        "unavailable": res.get("unavailable"),
+        "zipPath": res.get("zipPath"),
+        "items": [_result_row(item) for item in res.get("items", [])
+                  if isinstance(item, dict)],
+    }
+
+
+def _download_emitter(job_id: int):
+    """Wire engine events into one download job for live progress."""
+    from rch.core.events import create_emitter, phase_label
+
+    def update(**fields) -> None:
+        with _JOB_LOCK:
+            jobs_update(_JOBS, job_id, **fields)
+
+    def on_progress(payload) -> None:
+        data = payload or {}
+        done, total = data.get("done"), data.get("total")
+        if total:
+            update(progress=min(1.0, done / total), phase=f"{done}/{total}")
+
+    def on_phase(payload) -> None:
+        update(phase=phase_label(payload))
+
+    def on_video_done(payload) -> None:
+        data = payload or {}
+        _append_download_item(job_id, _result_row({
+            "videoId": data.get("id"),
+            "title": data.get("title", ""),
+            "ok": bool(data.get("ok")),
+            "error": data.get("error"),
+        }))
+
+    emitter = create_emitter()
+    emitter.on("progress", on_progress)
+    emitter.on("phase", on_phase)
+    emitter.on("video:done", on_video_done)
+    return emitter
+
+
+def _start_download(fn, command: str, link: str,
+                    options: Dict[str, Any]) -> int:
+    """Allocate a job, bind its emitter, and run ``fn`` on a worker thread.
+
+    ``command`` is passed in rather than read off ``fn`` because the label is
+    what the run history shows - ``channel-full``, not ``channel_full`` - and
+    because a test that stubs the engine should not change what the job calls
+    itself.
+    """
+    job_id = _start_download_job(command)
+    emitter = _download_emitter(job_id)
+
+    def finish(**fields) -> None:
+        _update_download_job(job_id, **fields)
+
+    def target() -> None:
+        try:
+            result = fn(link, options, emitter=emitter)
+        except Exception as exc:  # noqa: BLE001 - surfaced to the UI
+            finish(status="error", progress=1, phase="Gagal", error=str(exc))
+            return
+        finish(status="done", progress=1, phase="Selesai",
+               result=_summarise(result))
+
+    threading.Thread(target=target, daemon=True).start()
+    return job_id
+
+
+@app.route("/api/info", methods=["POST"])
+def api_info():
+    from rch.youtube import thumbnail as thumb
+
+    link = _link()
+    if not link:
+        return jsonify({"status": False, "message": "URL wajib diisi."}), 400
+    try:
+        return jsonify(thumb.thumbnail(link))
+    except Exception as exc:  # noqa: BLE001 - surfaced to the UI
+        return jsonify({"status": False, "message": str(exc)}), 500
+
+
+@app.route("/api/download", methods=["POST"])
+def api_download():
+    from rch.youtube import video as vid
+
+    body = _body()
+    link = _link()
+    if not link:
+        return jsonify({"status": False, "message": "URL wajib diisi."}), 400
+    result = vid.download(link, {
+        "format": body.get("format") or "mp4",
+        "quality": body.get("quality") or "720p",
+        "outputDir": body.get("outputDir") or DEFAULT_OUT,
+    })
+    return jsonify(result), (200 if result.get("status") else 400)
+
+
+@app.route("/api/playlist", methods=["POST"])
+def api_playlist():
+    from rch.youtube import playlist as pl
+
+    link = _link()
+    if not link:
+        return jsonify({"status": False, "message": "URL wajib diisi."}), 400
+    body = _body()
+    try:
+        result = pl.playlist_metadata(
+            link, {"limit": pl.parse_limit(body.get("limit"))})
+    except Exception as exc:  # noqa: BLE001 - surfaced to the UI
+        return jsonify({"status": False, "message": str(exc)}), 500
+    return jsonify(result), (200 if result.get("status") else 400)
+
+
+def _channel_options(body: Dict[str, Any], *, with_size: bool) -> Dict[str, Any]:
+    options: Dict[str, Any] = {
+        "quality": body.get("quality") or "720p",
+        "outputDir": body.get("outputDir") or DEFAULT_OUT,
+        "limit": body.get("limit") or None,
+        "shorts": bool(body.get("shorts")),
+    }
+    if with_size:
+        options["size"] = body.get("size") or "hqdefault"
+    return options
+
+
+def _channel_route(fn_name: str, command: str, *, with_size: bool):
+    from rch.youtube import channel as chan
+
+    body = _body()
+    link = _link()
+    if not link:
+        return jsonify({"status": False, "message": "URL wajib diisi."}), 400
+    job_id = _start_download(getattr(chan, fn_name), command, link,
+                             _channel_options(body, with_size=with_size))
+    return jsonify({"jobId": job_id, "status": "running"})
+
+
+@app.route("/api/channel-info", methods=["POST"])
+def api_channel_info():
+    return _channel_route("channel_info", "channel-info", with_size=True)
+
+
+@app.route("/api/channel-video", methods=["POST"])
+def api_channel_video():
+    return _channel_route("channel_video", "channel-video", with_size=False)
+
+
+@app.route("/api/channel-full", methods=["POST"])
+def api_channel_full():
+    return _channel_route("channel_full", "channel-full", with_size=True)
+
+
+@app.route("/api/runs")
+def api_runs():
+    """Harvest run history.
+
+    Named /api/runs because /api/history was already the clipper's clip
+    history, and one path cannot mean two different lists. The older app served
+    harvest history from /api/history, which is why the name changed rather than
+    overwriting the clip history that was already there.
+    """
+    from rch.core.report import read_history
+
+    out = request.args.get("out") or DEFAULT_OUT
+    try:
+        records = read_history(out)
+    except TypeError:
+        return jsonify({"error": "Parameter out tidak valid"}), 400
+    records.reverse()
+    # Each row gains the per-video statuses it covered, so the table can say
+    # "3 dari 5 sudah clip" rather than only aggregate counts. A legacy row whose
+    # ids were truncated reports only those, and one with no ids reports none.
+    for record in records:
+        ids = record.get("videoIds") or []
+        statuses = _tracker_statuses()
+        record["items"] = [
+            {"videoId": vid, "status": statuses.get(vid)} for vid in ids
+        ]
+    return jsonify(records)
+
+
+def _tracker_statuses() -> Dict[str, str]:
+    """Map of video id to overall status, cached for this request.
+
+    A channel run is hundreds of rows and folding the ledger per row would
+    re-read the file hundreds of times. Outside a request context there is no
+    request to cache against, so the answer is simply empty.
+    """
+    try:
+        cache = getattr(g, "_tracker_statuses", None)
+    except RuntimeError:
+        return {}
+    if cache is None:
+        try:
+            from rch.core.tracker import statuses_for
+
+            cache = statuses_for()
+        except Exception:  # noqa: BLE001 - a missing ledger must not break history
+            cache = {}
+        try:
+            g._tracker_statuses = cache
+        except RuntimeError:
+            return cache
+    return cache
 
 
 @app.route("/api/quit", methods=["POST"])
