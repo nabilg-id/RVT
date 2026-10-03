@@ -280,14 +280,31 @@ def download(url: str, options: Optional[Dict] = None, *,
              run_ytdlp: Optional[Callable[..., str]] = None,
              fetch_title: Optional[Callable[[str], str]] = None,
              ensure_updated: Optional[Callable[[], None]] = None,
-             sleep: Optional[Callable[[float], None]] = None) -> Dict:
-    """Download a YouTube video with retry/backoff.
+             sleep: Optional[Callable[[float], None]] = None,
+             downloader=None) -> Dict:
+    """Download a YouTube video. Returns an envelope dict; never raises.
 
-    Retryable failures (``is_retryable_error``) back off exponentially starting
-    at 2s; non-retryable failures short-circuit immediately. Never raises —
-    always returns an envelope dict.
+    Two paths, chosen by what the caller injected:
+
+    - **No ``run_ytdlp``** - the shared clipper downloader is used. It resolves
+      a JavaScript runtime so yt-dlp can answer YouTube's challenge, takes
+      ffmpeg from imageio so a machine without it on PATH still works, and falls
+      back across player clients. This is what the CLI and ``/api/download``
+      get, and it is the only remaining reason this module still knows about
+      subprocesses at all.
+    - **``run_ytdlp`` given** - the legacy subprocess path, kept because the
+      suite exercises the argument builder and the parser through that seam.
+
+    The outer retry ladder below applies only to the legacy path. The shared
+    downloader already retries three ways, so retrying the whole call again on
+    top of it would turn one unavailable video into a dozen requests and a much
+    longer wait.
     """
     opts: Dict = options if options is not None else {}
+
+    if run_ytdlp is None:
+        return _download_via_shared(url, opts, downloader)
+
     retries = opts.get("retries", _DEFAULT_RETRIES)
     sleeper = time.sleep if sleep is None else sleep
 
@@ -319,3 +336,86 @@ def download(url: str, options: Optional[Dict] = None, *,
     except Exception as exc:
         _track(extract_video_id(url), "download", status="failed", error=str(exc))
         return {"status": False, "message": str(exc)}
+
+
+def _download_via_shared(url: str, opts: Dict, downloader=None) -> Dict:
+    """Fetch one video through the shared downloader and shape the envelope.
+
+    The nested ``result.path`` is kept because channel workers and the CLI read
+    it, and the tracker records ``title`` from the same envelope.
+    """
+    video_id = extract_video_id(url)
+    if not video_id:
+        # Checked here rather than left to the downloader. The old message is
+        # kept so callers matching on it still work, and validating first means
+        # the answer does not depend on whether the clipper import succeeded.
+        return {"status": False, "message": "Invalid YouTube video URL."}
+
+    call = downloader
+    if call is None:
+        try:
+            from clipper.services.youtube_downloader import YouTubeDownloader
+
+            instance = YouTubeDownloader()
+
+            def call(url, **kwargs):  # noqa: F811 - deliberate rebind
+                return instance.download(url, **kwargs)
+        except Exception as exc:  # noqa: BLE001 - RCH must work standalone
+            _track(extract_video_id(url), "download", status="failed",
+                   error=str(exc))
+            return {"status": False, "message": str(exc)}
+
+    video_id = extract_video_id(url)
+    try:
+        result = call(url, **_shared_kwargs(opts))
+    except Exception as exc:  # noqa: BLE001 - reported, never raised
+        message = str(exc) or exc.__class__.__name__
+        _track(video_id, "download", status="failed", error=message)
+        return {"status": False, "message": message}
+
+    path = getattr(result, "path", None)
+    title = getattr(result, "title", None)
+    _track(video_id, "download", status="done", path=str(path) if path else None,
+           title=title)
+    return {
+        "status": True,
+        "message": None,
+        "result": {
+            "path": path,
+            "title": title,
+            "duration": getattr(result, "duration", None),
+            "videoId": getattr(result, "video_id", None) or video_id,
+        },
+    }
+
+
+def _shared_kwargs(opts: Dict) -> Dict:
+    """Rename RCH's options into the shared downloader's keywords.
+
+    The downloader takes keyword-only arguments, so forwarding ``outputDir``
+    would raise ``TypeError`` for every option.
+    """
+    fmt = str(opts.get("format") or "mp4").lower()
+    audio_only = fmt in ("mp3", "m4a", "opus", "aac", "wav", "flac")
+
+    kwargs: Dict = {"audio_only": audio_only}
+    if audio_only:
+        kwargs["audio_format"] = fmt
+    if opts.get("quality"):
+        kwargs["quality"] = opts["quality"]
+    if opts.get("outputDir"):
+        kwargs["output_dir"] = opts["outputDir"]
+    if opts.get("filename"):
+        kwargs["filename"] = opts["filename"]
+    if opts.get("subtitles"):
+        kwargs["subtitles"] = True
+        kwargs["sub_lang"] = opts.get("subLang") or None
+    if opts.get("cookiesBrowser"):
+        kwargs["cookies_browser"] = opts["cookiesBrowser"]
+    if opts.get("limitRate"):
+        kwargs["limit_rate"] = opts["limitRate"]
+    if opts.get("proxy"):
+        kwargs["proxy"] = opts["proxy"]
+    if opts.get("sleepRequests") is not None:
+        kwargs["sleep_requests"] = opts["sleepRequests"]
+    return kwargs
