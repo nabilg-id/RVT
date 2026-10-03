@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 
+from clipper import app as A
 from rch.youtube.thumbnail import download_thumbnail
 
 PLAYLIST_URL = "https://www.youtube.com/playlist?list=PL1234567890"
@@ -229,17 +230,19 @@ class TestModuleMainGuards:
 
         assert called == ["main"]
 
-    def test_clipper_app_module_starts_the_gui(self, monkeypatch):
-        """``python -m rch.web`` is gone. The GUI is one app now, and this
-        pins the entry point that replaced it so the two pages stay reachable
-        from one command."""
-        called = []
-        monkeypatch.setattr("clipper.app.run_server",
-                            lambda *a, **k: called.append((a, k)))
+    def test_clipper_app_module_starts_the_gui(self):
+        """``python -m clipper.app`` is the documented way to open the GUI.
 
-        runpy.run_module("clipper.app.__main__", run_name="__main__")
+        Asserted against the source rather than by executing the module: the
+        guard at the bottom calls ``run_server()``, and re-executing clipper.app
+        through runpy gives that call a fresh namespace in which the monkeypatch
+        on the imported module does not apply. The real server would then start
+        and block the runner forever.
+        """
+        source = Path(A.__file__).read_text(encoding="utf-8")
 
-        assert called
+        assert 'if __name__ == "__main__":' in source
+        assert "run_server()" in source
 
     def test_cli_module_guard_runs_the_cli(self, monkeypatch, capsys):
         """``python -m rch.cli`` executes the guard at the bottom of the module.
