@@ -55,25 +55,37 @@ def client(tmp_path, monkeypatch):
     A.app.config["TESTING"] = True
     monkeypatch.setattr(A, "TEMP_DIR", tmp_path)
     monkeypatch.setattr(A, "OUTPUT_DIR", tmp_path / "clips")
+    # Clear before the test as well as after. _JOBS is module state shared by
+    # every test in the session, so a job left "running" by an earlier test
+    # would otherwise make this test's teardown wait on somebody else's thread.
+    with A._JOB_LOCK:
+        A._JOBS.clear()
     with A.app.test_client() as c:
         yield c
-    _drain_jobs()
+        with A._JOB_LOCK:
+            mine = set(A._JOBS)
+    _drain_jobs(mine)
     with A._JOB_LOCK:
         A._JOBS.clear()
 
 
-def _drain_jobs(timeout=10.0):
-    """Hold the teardown until no worker thread is still running.
+def _drain_jobs(job_ids, timeout=10.0):
+    """Hold teardown until the jobs *this* test started have finished.
 
     A clip job runs in the background and reads module state the next test is
     about to replace. One that outlives its test turns the processor stubs into
     a coin flip, and a real VideoProcessor built at that moment reaches out to
     huggingface.co for a Whisper model.
+
+    Scoped to this test's own job ids on purpose: waiting on every job in
+    _JOBS makes a single stuck thread cost ten seconds of timeout for every
+    remaining test in the session.
     """
     deadline = time.time() + timeout
     while time.time() < deadline:
         with A._JOB_LOCK:
-            pending = [j for j in A._JOBS.values() if j.status == "running"]
+            pending = [j for jid, j in A._JOBS.items()
+                       if jid in job_ids and j.status == "running"]
         if not pending:
             return
         time.sleep(0.02)
@@ -99,8 +111,17 @@ def _stub_processor(monkeypatch, processor_cls):
     return mod
 
 
-@pytest.fixture()
+@pytest.fixture(autouse=True)
 def stub_processor(monkeypatch):
+    """Stop any test in this module from starting a real clip pipeline.
+
+    Autouse on purpose. Several validation tests post a valid-looking payload
+    and assert only the 200, which really does spawn a worker thread - and a real
+    VideoProcessor then tries to reach YouTube, holds the thread for the length
+    of yt-dlp's retry ladder, and outlives the test. Making the stub opt-in only
+    means the next such test reintroduces the same leak, so it applies to
+    everything here and a test that wants a different processor overrides it.
+    """
     return _stub_processor(monkeypatch, FakeProcessor)
 
 

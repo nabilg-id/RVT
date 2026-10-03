@@ -7,6 +7,7 @@ a queued video was waiting at all.
 from __future__ import annotations
 
 import sys
+import time
 import types
 
 import pytest
@@ -45,28 +46,33 @@ def client(tmp_path, monkeypatch):
     A.app.config["TESTING"] = True
     monkeypatch.setattr(A, "TEMP_DIR", tmp_path)
     monkeypatch.setattr(A, "OUTPUT_DIR", tmp_path / "clips")
+    # See the note in _drain_jobs: clearing up front keeps this teardown from
+    # waiting on a thread that belongs to an earlier test.
+    with A._JOB_LOCK:
+        A._JOBS.clear()
     with A.app.test_client() as c:
         yield c
-    _drain_jobs()
+        with A._JOB_LOCK:
+            mine = set(A._JOBS)
+    _drain_jobs(mine)
     with A._JOB_LOCK:
         A._JOBS.clear()
 
 
-def _drain_jobs(timeout=10.0):
-    """Wait for every worker thread to finish before the test tears down.
+def _drain_jobs(job_ids, timeout=10.0):
+    """Wait for this test's own worker threads before tearing down.
 
     A clip job runs on a background thread that reads module state the next test
-    is about to change. Letting one outlive the test turns this file's stubs into
-    a coin flip, so the fixture holds here until nothing is running. Checking
-    ``status != "running"`` is not enough on its own - a job that has not been
-    marked running yet still counts as pending.
+    is about to change. Letting one outlive the test turns this file's stubs
+    into a coin flip. Scoping to the ids this test created matters: waiting on
+    every job in _JOBS means one stuck thread costs a ten-second timeout in
+    every later test too.
     """
-    import time
-
     deadline = time.time() + timeout
     while time.time() < deadline:
         with A._JOB_LOCK:
-            pending = [j for j in A._JOBS.values() if j.status == "running"]
+            pending = [j for jid, j in A._JOBS.items()
+                       if jid in job_ids and j.status == "running"]
         if not pending:
             return
         time.sleep(0.02)
