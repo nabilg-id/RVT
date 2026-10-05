@@ -1945,6 +1945,107 @@ class TestChannelFullResumeAndEvents:
         assert seen[0]["label"] == "a1"
 
 
+class TestChannelInfoLedgerHonesty:
+    """A metadata-only run must not claim the video was downloaded.
+
+    ``channel_info`` fetches thumbnails and metadata and never touches the video,
+    but the success expression fell through to ``not unavailable``, so every
+    titled video was recorded in the ledger as ``download: done`` with the path
+    to a ``video.mp4`` that was never written. The board then listed a channel
+    the user had only previewed as fully downloaded, and each row's path 404'd.
+
+    The damage is permanent: the tracker skips any id it has already recorded, so
+    no later backfill can correct it. A title-less video was likewise recorded as
+    ``failed`` even though no download was ever attempted.
+    """
+
+    @staticmethod
+    def _events(monkeypatch):
+        # Patched where it is used, not where it is defined: channel.py does
+        # ``from ..core.tracker import append_event``, so it holds its own
+        # reference and patching rch.core.tracker would never be seen.
+        import rch.youtube.channel as channel_mod
+
+        seen = []
+        monkeypatch.setattr(channel_mod, "append_event",
+                            lambda *a, **k: seen.append((a, k)))
+        return seen
+
+    def test_no_download_verdict_is_recorded_at_all(self, tmp_path, monkeypatch):
+        seen = self._events(monkeypatch)
+
+        channel_info(
+            CHANNEL_URL,
+            _full_opts(tmp_path),
+            list_ids=_FakeIds(_video_ids("a1")),
+            metadata=_FakeMeta(batch={"a1": {"title": "Satu"}}),
+            download_video=_FakeDownload(),
+            download_image=_FakeImage(),
+            sleep=_FakeSleep(),
+        )
+
+        downloads = [k for a, k in seen if "download" in a]
+        assert downloads == [], (
+            f"a metadata-only run wrote download verdicts: {downloads}"
+        )
+
+    def test_the_ledger_does_not_claim_a_missing_file(self, tmp_path, monkeypatch):
+        seen = self._events(monkeypatch)
+
+        channel_info(
+            CHANNEL_URL,
+            _full_opts(tmp_path),
+            list_ids=_FakeIds(_video_ids("a1")),
+            metadata=_FakeMeta(batch={"a1": {"title": "Satu"}}),
+            download_video=_FakeDownload(),
+            download_image=_FakeImage(),
+            sleep=_FakeSleep(),
+        )
+
+        for args, fields in seen:
+            path = fields.get("path")
+            if path:
+                from pathlib import Path
+
+                assert Path(path).exists(), (
+                    f"ledger points at a file that was never written: {path}"
+                )
+
+    def test_an_unavailable_video_is_not_recorded_as_failed(self, tmp_path,
+                                                            monkeypatch):
+        seen = self._events(monkeypatch)
+
+        channel_info(
+            CHANNEL_URL,
+            _full_opts(tmp_path),
+            list_ids=_FakeIds(_video_ids("gone")),
+            metadata=_FakeMeta(batch={"gone": {}}),
+            download_video=_FakeDownload(),
+            download_image=_FakeImage(),
+            sleep=_FakeSleep(),
+        )
+
+        assert [k for a, k in seen if "download" in a] == []
+
+    def test_a_real_download_is_still_recorded(self, tmp_path, monkeypatch):
+        """Guard against over-correcting: channel-full must keep its verdicts."""
+        seen = self._events(monkeypatch)
+
+        channel_full(
+            CHANNEL_URL,
+            _full_opts(tmp_path),
+            list_ids=_FakeIds(_video_ids("a1")),
+            metadata=_FakeMeta(batch={"a1": {"title": "Satu"}}),
+            download_video=_FakeDownload(),
+            download_image=_FakeImage(),
+            sleep=_FakeSleep(),
+        )
+
+        downloads = [k for a, k in seen if "download" in a]
+        assert downloads, "channel_full stopped recording downloads"
+        assert downloads[0]["status"] == "done"
+
+
 class TestChannelInfo:
     def test_info_mode_skips_video_download(self, tmp_path):
         downloader = _FakeDownload()

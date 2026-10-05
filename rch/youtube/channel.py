@@ -988,9 +988,16 @@ def channel_full(channel_url: str, options: Optional[Dict] = None, *,
         _write_sidecar_files(folder_path, info, video_id, unavailable)
 
         base_zip = f"{folder_name}/"
-        video_ok = envelope.get("status") if include_video and not unavailable \
-            else not unavailable
-        if include_video and not unavailable and envelope.get("status"):
+        # Whether a download was *attempted*, which is not the same as whether
+        # the video can be had. A metadata-only run never touches the video, so
+        # it has no download verdict to report: the old expression fell through
+        # to "not unavailable" and stamped the ledger with download: done plus
+        # the path of a video.mp4 that was never written. The tracker refuses to
+        # revisit an id it already recorded, so the board showed a merely
+        # previewed channel as fully downloaded and no backfill could repair it.
+        attempted = include_video and not unavailable
+        video_ok = envelope.get("status") if attempted else not unavailable
+        if attempted and envelope.get("status"):
             zip_stream.add_file(envelope["result"]["path"], f"{base_zip}{_VIDEO_ARCNAME}")
         if thumb_ok:
             zip_stream.add_file(str(folder_path / _THUMB_FILENAME),
@@ -998,14 +1005,18 @@ def channel_full(channel_url: str, options: Optional[Dict] = None, *,
         zip_stream.add_file(str(folder_path / METADATA_FILENAME),
                             f"{base_zip}{METADATA_FILENAME}")
 
-        error = None if (include_video and not unavailable
-                         and envelope.get("status")) else envelope.get("message")
-        if video_ok:
-            _mark_completed(str(output_dir), video_id)
-            _track(video_id, "download", status="done",
-                   path=str(folder_path / _VIDEO_ARCNAME), title=label)
-        else:
-            _track(video_id, "download", status="failed", error=error, title=label)
+        error = None if (attempted and envelope.get("status")) \
+            else envelope.get("message")
+        if attempted:
+            # Only a run that tried can succeed or fail. Recording a verdict for
+            # an untouched video is what made this unrecoverable.
+            if video_ok:
+                _mark_completed(str(output_dir), video_id)
+                _track(video_id, "download", status="done",
+                       path=str(folder_path / _VIDEO_ARCNAME), title=label)
+            else:
+                _track(video_id, "download", status="failed", error=error,
+                       title=label)
         bus.emit("video:done", {"id": video_id, "title": label, "ok": video_ok,
                                 "skipped": False, "error": error})
         return _full_item(info, video_id, video_ok=video_ok, thumb_ok=thumb_ok,
