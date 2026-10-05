@@ -53,9 +53,12 @@ class FakeServer:
 def fake_server(monkeypatch):
     created = []
 
-    def _make(host, port, app):
+    def _make(host, port, app, **kwargs):
         srv = FakeServer()
         srv.host, srv.port = host, port
+        # Recorded so a test can assert how the real server was asked to behave,
+        # rather than inferring it from a class hierarchy.
+        srv.kwargs = kwargs
         created.append(srv)
         return srv
 
@@ -163,6 +166,94 @@ class TestQuitShutsDownTheLiveServer:
         thread.join(timeout=5)
 
         assert len(fake_server) == 1, "/api/quit must not re-open a port"
+
+
+class TestServerHandlesRequestsConcurrently:
+    """A slow request must not lock the whole app.
+
+    The routes that talk to YouTube block for as long as their timeout:
+    ``/api/preview`` waits on a yt-dlp subprocess for up to 90 seconds, and
+    ``/api/download`` runs a whole download. On a single-threaded server one of
+    those stalls every other request, so the other page will not load, a running
+    harvest's progress bar freezes, and - worst - the Cancel button does nothing,
+    because it cannot even be reached. The user is left watching a dead UI with
+    no way to stop the job.
+
+    Measured rather than asserted structurally: the point is whether a second
+    request is served while the first is still running.
+    """
+
+    def test_the_server_is_asked_to_be_threaded(self, fake_server, no_browser):
+        """Cheap guard next to the behavioural test below, so the option cannot
+        be dropped without a timing-based failure being the only signal."""
+        threading.Thread(target=A.run_server, kwargs={"open_browser": False},
+                         daemon=True).start()
+
+        srv = fake_server[0] if _wait_for(lambda: bool(fake_server)) else None
+        assert srv is not None
+        assert srv.kwargs.get("threaded") is True
+
+        srv.release()
+
+    def test_a_slow_route_does_not_block_the_others(self, no_browser, monkeypatch):
+        import http.client
+        import json
+        import time
+
+        # /api/preview imports get_video_info inside the function body, so the
+        # patch has to land on the module it imports from - patching clipper.app
+        # would do nothing at all.
+        import rch.youtube.metadata as meta
+
+        def _slow(*args, **kwargs):
+            time.sleep(4)
+            return {"duration": 212.0, "uploadDate": "20260101"}
+
+        monkeypatch.setattr(meta, "get_video_info", _slow)
+        import rch.youtube.thumbnail as thumb_mod
+
+        monkeypatch.setattr(thumb_mod, "thumbnail", lambda url: {
+            "status": True, "result": {
+                "title": "T", "thumbnails": {"maxresdefault": "http://x/y.jpg"}}})
+
+        srv = A.create_server("127.0.0.1", 0)
+        port = srv.server_port
+        thread = threading.Thread(target=srv.serve_forever, daemon=True)
+        thread.start()
+
+        def _slow_call():
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
+            try:
+                payload = json.dumps({"url": "https://youtu.be/dQw4w9WgXcQ"})
+                conn.request("POST", "/api/preview", body=payload, headers={
+                    "Content-Type": "application/json"})
+                conn.getresponse().read()
+            finally:
+                conn.close()
+
+        try:
+            blocker = threading.Thread(target=_slow_call, daemon=True)
+            blocker.start()
+            # Give the blocking request time to occupy the only worker slot.
+            time.sleep(1.0)
+
+            started = time.monotonic()
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+            conn.request("GET", "/api/videos")
+            response = conn.getresponse()
+            response.read()
+            elapsed = time.monotonic() - started
+            conn.close()
+
+            assert response.status == 200
+            assert elapsed < 2.5, (
+                f"a second request waited {elapsed:.1f}s behind a slow one; the "
+                f"server is serving one request at a time"
+            )
+        finally:
+            srv.shutdown()
+            thread.join(timeout=5)
+            srv.server_close()
 
 
 class TestShutdownHelper:

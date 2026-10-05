@@ -960,7 +960,15 @@ def _shutdown() -> None:
 def create_server(host: str = RCH_HOST, port: int = RCH_PORT):
     from werkzeug.serving import make_server
 
-    return make_server(host, port, app)
+    # Threaded, because several routes block on purpose. /api/preview waits on a
+    # yt-dlp subprocess for up to 90 seconds, /api/playlist retries four times,
+    # and /api/download runs an entire download. Werkzeug's default serves one
+    # request at a time, so any one of those stalls every other request: the
+    # other page will not load, a running harvest's progress stops updating, and
+    # /api/cancel cannot be reached either - leaving the user watching a dead UI
+    # with no way to stop the job. The GUI is a local single-user tool, so a
+    # thread per request costs nothing that matters.
+    return make_server(host, port, app, threaded=True)
 
 
 def backfill_ledger() -> int:
