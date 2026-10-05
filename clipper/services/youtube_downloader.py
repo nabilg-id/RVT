@@ -237,6 +237,15 @@ class YouTubeDownloader:
             'fragment_retries': max_retries,
             'extractor_retries': max_retries,
             'ffmpeg_location': ffmpeg_path,
+            # A JavaScript runtime alone is not enough. Without the solver
+            # script yt-dlp reports "n challenge solving failed" and quietly
+            # drops some formats, which reads as a missing quality rather than a
+            # missing option - a 1080p request quietly lands on 480p. The script
+            # is fetched on demand and cached, so this costs one download the
+            # first time and nothing after. Always set, independently of whether
+            # a runtime was found: the two are useless apart, and a missing
+            # runtime is a better failure than silently missing formats.
+            'remote_components': ['ejs:github'],
         }
 
         if audio_only:

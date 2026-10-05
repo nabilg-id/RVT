@@ -219,6 +219,42 @@ class TestJsRuntimeDetection:
         assert Y.YouTubeDownloader()._get_js_runtimes() == {}
 
 
+class TestChallengeSolverComponents:
+    """yt-dlp needs the challenge solver script, not just a runtime.
+
+    A JavaScript runtime is only half of it. Without the solver script itself
+    yt-dlp prints "n challenge solving failed" and quietly drops some formats,
+    which looks like a missing quality rather than a missing option. Both have
+    to be requested together, and the request has to survive a retry.
+    """
+
+    def test_solver_script_is_requested(self, tmp_path, monkeypatch):
+        d = stub(monkeypatch, tmp_path)
+        d.download(URL)
+        assert FakeYDL.seen[0]["remote_components"] == ["ejs:github"]
+
+    def test_solver_script_is_requested_alongside_the_runtime(
+        self, tmp_path, monkeypatch
+    ):
+        """The two are useless apart, so neither may be conditional on the
+        other."""
+        d = stub(monkeypatch, tmp_path, js_runtimes={"node": {}})
+        d.download(URL)
+        opts = FakeYDL.seen[0]
+        assert opts["js_runtimes"] == {"node": {}}
+        assert opts["remote_components"] == ["ejs:github"]
+
+    def test_solver_script_survives_the_format_fallback(self, tmp_path,
+                                                        monkeypatch):
+        """The fallback copies opts, so it should carry the option over - but
+        the copy is the fragile part, so it is asserted rather than assumed."""
+        d = stub(monkeypatch, tmp_path, script=["boom", "boom", "ok"])
+        d.download(URL)
+        assert len(FakeYDL.seen) > 1, "the fallback ladder was never walked"
+        for opts in FakeYDL.seen:
+            assert opts["remote_components"] == ["ejs:github"]
+
+
 # -- cookies ----------------------------------------------------------------
 
 
