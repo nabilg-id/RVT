@@ -4,6 +4,7 @@
   var $ = function (s) { return document.querySelector(s); };
   var pollTimer = null;
   var busy = false;
+  var currentJobId = null;
   var lastLogLen = 0;
   var STATUS_LABELS = {};
 
@@ -43,6 +44,10 @@
     busy = state;
     $("#generateBtn").disabled = state;
     $("#previewBtn").disabled = state;
+    // The cancel button only makes sense while a job is running. Uses the
+    // hidden attribute, matching the preview/results panels in the markup.
+    $("#cancelBtn").hidden = !state;
+    if (!state) currentJobId = null;
   }
 
   function currentPayload() {
@@ -96,6 +101,9 @@
 
       if (job.error) {
         log("[!!] " + job.error);
+        finish();
+      } else if (job.status === "cancelled") {
+        log("[x] Dibatalkan.");
         finish();
       } else if (job.status === "done") {
         log("[OK] Selesai. " + (job.title ? '"' + job.title + '"' : ""));
@@ -266,6 +274,7 @@
           setBusy(false);
           return;
         }
+        currentJobId = r.data.jobId;
         await poll(r.data.jobId);
       } catch (e) {
         log("[!!] " + e.message);
@@ -308,6 +317,16 @@
       document.body.innerHTML =
         '<div style="padding:60px;text-align:center;font-family:system-ui">' +
         "<h2>Server dimatikan</h2><p>Jendela ini bisa ditutup dengan aman.</p></div>";
+    });
+
+    $("#cancelBtn").addEventListener("click", async function () {
+      if (!currentJobId) return;
+      log("[*] Membatalkan job…");
+      try {
+        await post("/api/cancel/" + currentJobId, {});
+      } catch (e) {
+        log("[!!] Gagal membatalkan: " + e.message);
+      }
     });
 
     try {

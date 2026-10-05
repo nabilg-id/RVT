@@ -36,16 +36,35 @@ echo       Tekan Ctrl+C untuk melewati dan hanya memakai mode ringan.
 if errorlevel 1 echo [PERINGATAN] Dependensi clip gagal; pipeline clip tidak akan jalan.
 echo.
 
-echo [4/4] Membuat shortcut desktop...
-set "SHORTCUT=%USERPROFILE%\Desktop\VCLIP-GUI.bat"
-copy /y "launchers\vclip.bat" "%SHORTCUT%" >nul
-if exist "%SHORTCUT%" ( echo Shortcut: %SHORTCUT% ) else ( echo [PERINGATAN] Gagal membuat shortcut. )
+echo [4/4] Membuat launcher desktop...
+REM Launcher DITULIS ULANG, bukan disalin. Salinan memakai "%~dp0" untuk
+REM mencari folder aplikasi, dan setelah disalin ke Desktop %~dp0 menjadi
+REM Desktop - sehingga import clipper gagal dan jendela langsung ketutup.
+REM Yang ditulis di sini memuat folder aplikasi sebagai RCH_REPO, jadi file
+REM Desktop-nya tahu harus kemana.
+set "LAUNCHER=%CD%\launchers\vclip.bat"
+if not exist "%LAUNCHER%" (
+  set "LAUNCHER=%~dp0launchers\vclip.bat"
+)
+for %%F in ("%USERPROFILE%\Desktop\VCLIP-GUI.bat" "%USERPROFILE%\Desktop\RCH-GUI.bat") do (
+  if exist %%F del /f /q %%F >nul 2>nul
+)
+for %%F in ("%USERPROFILE%\Desktop\VCLIP-GUI.bat" "%USERPROFILE%\Desktop\RCH-GUI.bat") do (
+  (
+    echo @echo off
+    echo set "RCH_REPO=%CD:\=\%%"
+    echo call "%LAUNCHER%"
+  ) > %%F
+  if not exist %%F echo [PERINGATAN] Gagal menulis %%F
+)
+if exist "%USERPROFILE%\Desktop\VCLIP-GUI.bat" echo Shortcut: %USERPROFILE%\Desktop\VCLIP-GUI.bat
+if exist "%USERPROFILE%\Desktop\RCH-GUI.bat" echo Shortcut: %USERPROFILE%\Desktop\RCH-GUI.bat
 echo.
 
 echo ============================================
-echo  Selesai. Buka "VCLIP-GUI" di Desktop.
-echo  GUI: http://127.0.0.1:8787
-echo  CLI: %PY% -m clipper.main
+echo  Selesai. Buka "VCLIP-GUI" atau "RCH-GUI" di Desktop.
+echo  GUI: http://127.0.0.1:8787  (tab / dan /download)
+echo  CLI: %PY% -m rch --help
 echo ============================================
 pause
 endlocal
