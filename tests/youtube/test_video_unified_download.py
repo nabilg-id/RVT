@@ -184,3 +184,125 @@ class TestTrackingStillHappens:
 
         assert seen
         assert seen[0][1]["status"] == "failed"
+
+
+class TestStandaloneFallback:
+    """The production path when no downloader is injected.
+
+    Every other test in this file injects a stand-in, which is right for testing
+    the translation but leaves the code that actually runs in production
+    uncovered: RCH on its own has to find the shared downloader by itself, and
+    when that import fails it has to report the failure rather than raise.
+
+    The shared downloader is faked through ``sys.modules`` rather than patched,
+    for the same reason the clipper tests fake ``video_processor`` that way:
+    importing the real module pulls in yt_dlp, which is not importable on every
+    interpreter this project supports, and a test must not depend on that.
+    """
+
+    def test_it_builds_the_shared_downloader_when_none_is_given(
+        self, monkeypatch, tmp_path
+    ):
+        import sys
+        import types
+
+        built = {}
+
+        class FakeResult2:
+            path = "downloads/x/video.mp4"
+            title = "Judul"
+            duration = 61.0
+            video_id = "dQw4w9WgXcQ"
+
+        class FakeDownloader:
+            def __init__(self, *a, **k):
+                built["created"] = True
+
+            def download(self, url, **kwargs):
+                built["call"] = (url, kwargs)
+                return FakeResult2()
+
+        module = types.ModuleType("clipper.services.youtube_downloader")
+        module.YouTubeDownloader = FakeDownloader
+        monkeypatch.setitem(sys.modules, "clipper.services.youtube_downloader",
+                            module)
+
+        result = V.download(URL, _opts(), downloader=None)
+
+        assert built.get("created") is True
+        assert built["call"][0] == URL
+        assert result["status"] is True
+
+    def test_a_downloader_that_cannot_be_built_is_reported_not_raised(
+        self, monkeypatch, tmp_path
+    ):
+        import sys
+        import types
+
+        import rch.core.tracker as tracker_mod
+
+        monkeypatch.setattr(tracker_mod, "append_event", lambda *a, **k: None)
+
+        class Exploding:
+            def __init__(self, *a, **k):
+                raise RuntimeError("tidak bisa menyiapkan downloader")
+
+        module = types.ModuleType("clipper.services.youtube_downloader")
+        module.YouTubeDownloader = Exploding
+        monkeypatch.setitem(sys.modules, "clipper.services.youtube_downloader",
+                            module)
+
+        result = V.download(URL, _opts(), downloader=None)
+
+        assert result["status"] is False
+        assert "tidak bisa menyiapkan downloader" in result["message"]
+
+
+class TestSharedKwargs:
+    """Every RCH option has to reach the downloader under its own name."""
+
+    def test_audio_format_follows_an_audio_only_request(self):
+        kwargs = V._shared_kwargs({"format": "MP3"})
+        assert kwargs["audio_only"] is True
+        assert kwargs["audio_format"] == "mp3"
+
+    def test_video_format_is_not_audio_only(self):
+        assert V._shared_kwargs({"format": "mp4"})["audio_only"] is False
+
+    def test_missing_format_defaults_to_mp4(self):
+        assert V._shared_kwargs({}) == {"audio_only": False}
+
+    def test_quality_and_output_dir_are_renamed(self):
+        kwargs = V._shared_kwargs({"quality": "1080p", "outputDir": "keluar"})
+        assert kwargs["quality"] == "1080p"
+        assert kwargs["output_dir"] == "keluar"
+
+    def test_filename_is_forwarded(self):
+        assert V._shared_kwargs({"filename": "judul"})["filename"] == "judul"
+
+    def test_subtitles_carry_their_language(self):
+        kwargs = V._shared_kwargs({"subtitles": True, "subLang": "id"})
+        assert kwargs["subtitles"] is True
+        assert kwargs["sub_lang"] == "id"
+
+    def test_subtitles_without_a_language(self):
+        kwargs = V._shared_kwargs({"subtitles": True})
+        assert kwargs["sub_lang"] is None
+
+    def test_cookies_browser_limit_rate_and_proxy(self):
+        kwargs = V._shared_kwargs({
+            "cookiesBrowser": "firefox",
+            "limitRate": "2M",
+            "proxy": "http://proxy",
+        })
+        assert kwargs["cookies_browser"] == "firefox"
+        assert kwargs["limit_rate"] == "2M"
+        assert kwargs["proxy"] == "http://proxy"
+
+    def test_sleep_requests_of_zero_is_still_forwarded(self):
+        """Zero is a real instruction - no delay between requests - so it must
+        not be dropped the way a falsy check would drop it."""
+        assert V._shared_kwargs({"sleepRequests": 0})["sleep_requests"] == 0
+
+    def test_absent_sleep_requests_is_omitted(self):
+        assert "sleep_requests" not in V._shared_kwargs({})

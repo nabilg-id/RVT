@@ -10,12 +10,45 @@ config.py anchors relative paths to the repo root; these tests hold that line.
 """
 from __future__ import annotations
 
+import contextlib
 import importlib
 import os
 import sys
+from types import ModuleType
 
 import dotenv
 import pytest
+
+
+@contextlib.contextmanager
+def _fresh_clipper_modules():
+    """Re-import the clipper submodules against the current config.
+
+    Dropping them from ``sys.modules`` is the only way to force
+    ``video_processor`` to pick up a reloaded config, because it imports
+    OUTPUT_DIR by value.
+
+    The removed entries are put back on the way out. That is not tidiness, it is
+    correctness: the ``clipper`` package object keeps its ``app`` attribute
+    pointing at the old module, so once ``sys.modules`` has been emptied the two
+    ways of reaching a module disagree. ``monkeypatch.setattr("clipper.app.x")``
+    walks the attribute and patches the old module, while
+    ``from clipper.app import x`` goes through ``sys.modules`` and builds a new
+    one. A later test that patches ``run_server`` to keep a real server from
+    starting then patches the object nobody reads, and the unmocked original
+    runs and blocks in ``serve_forever`` for the rest of the session.
+    """
+    removed: dict[str, ModuleType] = {
+        name: sys.modules[name]
+        for name in list(sys.modules)
+        if name.startswith("clipper") and name != "clipper"
+    }
+    for name in removed:
+        del sys.modules[name]
+    try:
+        yield
+    finally:
+        sys.modules.update(removed)
 
 
 def reload_config(monkeypatch, **env):
@@ -163,18 +196,45 @@ class TestNoChdirDependence:
         reload_config(monkeypatch,
                       OUTPUT_DIR=str(tmp_path / "keluaran"),
                       TEMP_DIR=str(tmp_path / "s"))
-        for mod in list(sys.modules):
-            if mod.startswith("clipper") and mod != "clipper":
-                del sys.modules[mod]
 
-        config = importlib.import_module("clipper.config")
-        # Import the pipeline module the way app.py does; it needs the heavy
-        # stack, so tolerate its absence.
-        try:
-            pipeline = importlib.import_module("clipper.services.video_processor")
-        except Exception:  # noqa: BLE001 - heavy deps not installed in CI
-            pytest.skip("pipeline clip tidak bisa diimpor")
+        with _fresh_clipper_modules():
+            config = importlib.import_module("clipper.config")
+            # Import the pipeline module the way app.py does; it needs the heavy
+            # stack, so tolerate its absence.
+            try:
+                pipeline = importlib.import_module("clipper.services.video_processor")
+            except Exception:  # noqa: BLE001 - heavy deps not installed in CI
+                pytest.skip("pipeline clip tidak bisa diimpor")
 
-        assert pipeline.OUTPUT_DIR == config.OUTPUT_DIR
-        assert pipeline.TEMP_DIR == config.TEMP_DIR
-        assert os.path.isabs(str(pipeline.OUTPUT_DIR))
+            assert pipeline.OUTPUT_DIR == config.OUTPUT_DIR
+            assert pipeline.TEMP_DIR == config.TEMP_DIR
+            assert os.path.isabs(str(pipeline.OUTPUT_DIR))
+
+    def test_purging_does_not_leak_into_later_tests(self, monkeypatch, tmp_path):
+        """The module purge must not outlive the test that performs it.
+
+        Leaking it splits the two ways of reaching a module - see
+        :func:`_fresh_clipper_modules` - and the damage shows up in an unrelated
+        test much later: a string-target monkeypatch silently patches an object
+        nothing reads, a real server starts, and the suite hangs instead of
+        failing. Asserted here rather than through suite ordering so the cause
+        is reported next to the fix.
+        """
+        before = sys.modules["clipper.app"]
+
+        with _fresh_clipper_modules():
+            assert "clipper.app" not in sys.modules, \
+                "the purge did not happen, so this test proves nothing"
+
+        assert sys.modules["clipper.app"] is before, \
+            "the purge leaked and later monkeypatches will miss their target"
+
+    def test_string_target_patch_reaches_a_from_import(self, monkeypatch):
+        """The invariant the leak broke: both ways of reaching a module must
+        see the same object, or a patch silently does nothing."""
+        sentinel = lambda **kw: None  # noqa: E731 - a marker, not a real callable
+        monkeypatch.setattr("clipper.app.run_server", sentinel)
+
+        from clipper.app import run_server
+
+        assert run_server is sentinel
