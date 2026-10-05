@@ -33,6 +33,14 @@ _CLIP_SPAN = 0.45
 
 _CLIPS_MARKER = "Generated Clips:"
 
+#: Status a cancelled job settles in. Its own status rather than "done",
+#: because reporting done would claim a completion the user never got.
+CANCELLED = "cancelled"
+
+#: Statuses that will never advance again. Used to decide whether a cancel
+#: request still means anything.
+_FINISHED_STATUSES = frozenset({"done", "error", CANCELLED})
+
 
 class _Tee(io.TextIOBase):
     """Meneruskan keluaran ke underlying stream sambil menyalin ke buffer.
@@ -105,6 +113,10 @@ class Job:
         #: Source YouTube id, set once the job starts so the history row and the
         #: shared ledger can both name the video a clip came from.
         self.video_id: Optional[str] = None
+        #: Set by ``cancel()`` once the user asks for this job to stop. Read by
+        #: the workers between items, so cancelling stops the *next* one rather
+        #: than killing the item already in flight.
+        self.cancelled = False
 
     def claim_history(self) -> bool:
         """True sekali saja, saat job pertama kali dicatat ke riwayat."""
@@ -155,13 +167,38 @@ class Job:
         with self._lock:
             self.title = title
 
-    def finish(self, error: Optional[str] = None) -> None:
+    def cancel(self) -> bool:
+        """Ask this job to stop; True if this call raised the flag.
+
+        A no-op on a job that already settled: a user clicking the button a
+        moment late must not have a completed run rewritten as cancelled.
+        """
         with self._lock:
-            self.status = "error" if error else "done"
-            self.error = error
-            if error is None:
-                self.progress = 1.0
-                self.phase = "Selesai"
+            if self.status in _FINISHED_STATUSES:
+                return False
+            self.cancelled = True
+            return True
+
+    def finish(self, error: Optional[str] = None) -> None:
+        """Settle the job, honouring a cancel that arrived before now.
+
+        A cancelled job settles in its own status rather than "done" - reporting
+        done would claim a completion the user never got - and it keeps whatever
+        progress it had reached instead of jumping to 100%.
+        """
+        with self._lock:
+            if error is not None:
+                self.status = "error"
+                self.error = error
+                return
+            if self.cancelled:
+                self.status = CANCELLED
+                self.phase = "Dibatalkan"
+                return
+            self.status = "done"
+            self.error = None
+            self.progress = 1.0
+            self.phase = "Selesai"
 
     def snapshot(self, log_tail: int = 200) -> dict:
         """Salinan aman untuk diserialisasi ke JSON.
@@ -181,6 +218,7 @@ class Job:
                 "title": self.title,
                 "outputs": list(self.outputs),
                 "error": self.error,
+                "cancelled": self.cancelled,
                 "log": self.log[-log_tail:],
                 "logTruncated": self._truncated,
             }

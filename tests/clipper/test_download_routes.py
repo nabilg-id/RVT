@@ -280,7 +280,7 @@ class TestLiveProgressReachesTheBrowser:
 
     def _emitting(self, events):
         """A fake engine that emits, then returns."""
-        def _inner(_link, options, emitter=None):
+        def _inner(_link, options, emitter=None, should_stop=None):
             for name, payload in events:
                 emitter.emit(name, payload)
             return {"status": True, "result": {"total": 2, "success": 2,
@@ -306,7 +306,7 @@ class TestLiveProgressReachesTheBrowser:
         actually polls."""
         seen = {}
 
-        def _peek(_link, options, emitter=None):
+        def _peek(_link, options, emitter=None, should_stop=None):
             # The job id is not known until the route returns, so the engine
             # finds its own record rather than closing over a later assignment.
             with A._JOB_LOCK:
@@ -337,7 +337,7 @@ class TestLiveProgressReachesTheBrowser:
         assert "1/4" in str(seen.get("phase")) or seen.get("phase") == "download"
 
     def test_a_finished_video_is_appended_as_a_row(self, monkeypatch):
-        def _inner(_link, options, emitter=None):
+        def _inner(_link, options, emitter=None, should_stop=None):
             emitter.emit("video:done", {"id": "v1", "title": "Satu",
                                         "ok": True, "error": None})
             emitter.emit("video:done", {"id": "v2", "title": "Dua",
@@ -357,7 +357,7 @@ class TestLiveProgressReachesTheBrowser:
         assert rows[1]["error"] == "403"
 
     def test_progress_with_no_total_does_not_divide_by_zero(self, monkeypatch):
-        def _inner(_link, options, emitter=None):
+        def _inner(_link, options, emitter=None, should_stop=None):
             emitter.emit("progress", {"done": 0, "total": 0})
             return {"status": True, "result": {"total": 0, "success": 0,
                                                "failed": 0, "items": []}}
@@ -487,7 +487,7 @@ class TestThePageCanActuallyRenderThePayload:
         Without the rename every successful channel-full row would be labelled
         GAGAL, which is the kind of bug a passing unit test never catches."""
         monkeypatch.setattr("rch.youtube.channel.channel_full",
-                            lambda link, opts, emitter=None: {
+                            lambda link, opts, emitter=None, should_stop=None: {
                                 "status": True, "result": {
                                     "total": 1, "success": 1, "failed": 0,
                                     "items": [{"videoId": "v1", "title": "T",
@@ -505,7 +505,7 @@ class TestThePageCanActuallyRenderThePayload:
     def test_the_row_carries_exactly_what_the_page_reads(self, monkeypatch):
         """An extra key here would be noise; a missing one is a blank cell."""
         monkeypatch.setattr("rch.youtube.channel.channel_full",
-                            lambda link, opts, emitter=None: {
+                            lambda link, opts, emitter=None, should_stop=None: {
                                 "status": True, "result": {
                                     "total": 1, "success": 1, "failed": 0,
                                     "items": [{"videoId": "v1", "title": "T",

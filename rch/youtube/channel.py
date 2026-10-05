@@ -370,11 +370,19 @@ def _run_workers(ids: List[str], total: int, concurrency: int,
                  worker: Callable[[str], Dict], on_done: Callable[[Dict], None],
                  on_phase: Optional[Callable[[str, str], None]],
                  on_progress: Optional[Callable[[int, int, str], None]],
-                 emitter, label_of: Callable[[Dict], str]) -> List[Dict]:
+                 emitter, label_of: Callable[[Dict], str],
+                 should_stop: Optional[Callable[[], bool]] = None) -> List[Dict]:
     """Process ids through a bounded thread pool, preserving result order.
 
     Concurrency only changes throughput, not the result sequence, so callers
     get deterministic ``items`` regardless of the configured pool size.
+
+    ``should_stop`` is asked before each item. A task that is told to stop is
+    skipped and leaves no row behind: it never ran, so a row claiming otherwise
+    would be a lie the report could not distinguish from a real download. Items
+    already in flight finish - one video is several files written to disk, and
+    tearing it down half way leaves a truncated file next to a thumbnail that
+    says it succeeded. Cancellation therefore means "not the next one".
     """
     workers = max(1, int(concurrency or 1))
     results: List[Optional[Dict]] = [None] * len(ids)
@@ -383,6 +391,8 @@ def _run_workers(ids: List[str], total: int, concurrency: int,
 
     def task(index: int, video_id: str) -> None:
         nonlocal done
+        if should_stop is not None and should_stop():
+            return
         item = worker(video_id)
         with lock:
             results[index] = item
@@ -425,7 +435,8 @@ def channel_video(channel_url: str, options: Optional[Dict] = None, *,
                   metadata: Optional[MetadataClient] = None,
                   download_video: Optional[Callable[[str, Dict], Dict]] = None,
                   sleep: Optional[Callable[[float], None]] = None,
-                  emitter=None) -> Dict:
+                  emitter=None,
+                  should_stop: Optional[Callable[[], bool]] = None) -> Dict:
     """Harvest video files for every video in a channel.
 
     Video-only counterpart of :func:`channel_full`: enumerates the channel,
@@ -536,9 +547,14 @@ def channel_video(channel_url: str, options: Optional[Dict] = None, *,
 
     results = _run_workers(ids, len(ids), concurrency, worker,
                            lambda _item: None, on_phase, on_progress, bus,
-                           lambda item: item.get("title") or item.get("videoId"))
+                           lambda item: item.get("title") or item.get("videoId"),
+                           should_stop=should_stop)
 
-    if retry_failed:
+    # Read once: the flag is a snapshot of "did the user ask us to stop", and
+    # both the retry pass and the checkpoint cleanup below need the same answer.
+    stopped = bool(should_stop is not None and should_stop())
+
+    if retry_failed and not stopped:
         _retry_failed_items(results, meta_map, slug_counts, work_dir, quality,
                             subtitles, sub_lang, downloader, sleeper, zip_stream, on_phase)
 
@@ -546,7 +562,9 @@ def channel_video(channel_url: str, options: Optional[Dict] = None, *,
 
     success = len([r for r in results if r["ok"]])
     failed_count = len(results) - success
-    if failed_count == 0:
+    # A stopped run has not finished the channel, so its checkpoint has to stay:
+    # it is what a later resume reads to skip videos already on disk.
+    if failed_count == 0 and not stopped:
         clear_checkpoint(str(output_dir))
 
     bus.emit("complete", {"channel": channel_url, "total": len(ids),
@@ -554,6 +572,7 @@ def channel_video(channel_url: str, options: Optional[Dict] = None, *,
 
     return {
         "status": True,
+        "cancelled": stopped,
         "result": {
             "channel": channel_url,
             "total": len(ids),
@@ -851,7 +870,8 @@ def channel_full(channel_url: str, options: Optional[Dict] = None, *,
                  download_video: Optional[Callable[[str, Dict], Dict]] = None,
                  download_image: Optional[Callable[[str], bytes]] = None,
                  sleep: Optional[Callable[[float], None]] = None,
-                 emitter=None) -> Dict:
+                 emitter=None,
+                 should_stop: Optional[Callable[[], bool]] = None) -> Dict:
     """Harvest video, thumbnail, description, and link for every channel video.
 
     The richest of the three modes: each video folder receives ``video.mp4``,
@@ -1003,9 +1023,14 @@ def channel_full(channel_url: str, options: Optional[Dict] = None, *,
 
     results = _run_workers(ids, len(ids), concurrency, guarded_worker,
                            lambda _item: None, on_phase, on_progress, bus,
-                           lambda item: item.get("title") or item.get("videoId"))
+                           lambda item: item.get("title") or item.get("videoId"),
+                           should_stop=should_stop)
 
-    if retry_failed and include_video:
+    # Read once: the flag is a snapshot of "did the user ask us to stop", and
+    # both the retry pass and the checkpoint cleanup below need the same answer.
+    stopped = bool(should_stop is not None and should_stop())
+
+    if retry_failed and include_video and not stopped:
         _retry_failed_items(results, meta_map, slug_counts, work_dir, quality,
                             subtitles, sub_lang, downloader, sleeper, zip_stream,
                             on_phase, key="videoOk", unavailable_key="unavailable")
@@ -1020,7 +1045,7 @@ def channel_full(channel_url: str, options: Optional[Dict] = None, *,
     failed_count = len(results) - success
     unavailable_items = [r for r in results if r.get("unavailable")]
 
-    if failed_count == 0:
+    if failed_count == 0 and not stopped:
         clear_checkpoint(str(output_dir))
 
     bus.emit("complete", {"channel": channel_url, "total": len(ids),
@@ -1028,6 +1053,9 @@ def channel_full(channel_url: str, options: Optional[Dict] = None, *,
 
     return {
         "status": True,
+        # A run that stopped early did not harvest the channel, so it says so
+        # rather than reporting a clean finish over a partial archive.
+        "cancelled": stopped,
         "result": {
             "channel": channel_url,
             "total": len(ids),

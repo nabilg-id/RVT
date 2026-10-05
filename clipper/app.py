@@ -19,8 +19,10 @@ from urllib.parse import urlsplit
 from flask import Flask, g, jsonify, render_template, request, send_from_directory
 
 from rch.core.jobs import append_item as jobs_append
+from rch.core.jobs import cancel as jobs_cancel
 from rch.core.jobs import create_job as jobs_create
 from rch.core.jobs import detach as jobs_detach
+from rch.core.jobs import is_cancelled as jobs_is_cancelled
 from rch.core.jobs import prune as jobs_prune
 from rch.core.jobs import update as jobs_update
 from rch.core.paths import default_downloads_dir
@@ -239,7 +241,19 @@ def _run_clip_job(job: Job, payload: dict) -> None:
     move: finishing first let a poller see a settled job while the video board
     still showed the video as processing, and the two disagreed until the next
     event arrived.
+
+    Cancellation is checked twice and means different things either side of the
+    pipeline. Before it, the job never starts - no Whisper model, no download,
+    nothing. After it, the video in flight is left to finish, because it is
+    several files being written and tearing it down leaves a truncated clip next
+    to a thumbnail claiming it succeeded. What cancellation changes is the
+    verdict: cancelled is neither the success nor the failure it would otherwise
+    be recorded as.
     """
+    if job.cancelled:
+        job.append_log("⏹️ Dibatalkan sebelum pipeline dimulai.")
+        job.finish()
+        return
     try:
         from .services.video_processor import VideoProcessor
 
@@ -255,9 +269,18 @@ def _run_clip_job(job: Job, payload: dict) -> None:
         job.set_title(title)
         with job._lock:
             job.outputs = [Path(o).name for o in outputs]
+        names = [Path(o).name for o in outputs]
+        if job.cancelled:
+            # The files are real - the pipeline was already past the point of no
+            # return - but the user stopped the job, so the ledger says cancelled
+            # rather than claiming a finished clip nobody asked to finish.
+            _track("clip", payload, status="cancelled", style=payload["style"],
+                   files=names, title=title)
+            job.finish()
+            return
         if outputs:
             _track("clip", payload, status="done", style=payload["style"],
-                   files=[Path(o).name for o in outputs], title=title)
+                   files=names, title=title)
         else:
             _track("clip", payload, status="failed", style=payload["style"],
                    error="Tidak ada clip yang berhasil dibuat")
@@ -513,6 +536,23 @@ def api_status(job_id: int):
     return jsonify(snapshot)
 
 
+@app.route("/api/cancel/<int:job_id>", methods=["POST"])
+def api_cancel(job_id: int):
+    """Ask one job of either kind to stop, and answer with its new state.
+
+    The flag stops the *next* item rather than the one already in flight, so a
+    cancel mid-run does not corrupt work that is already under way. Cancelling a
+    job that has already settled is accepted and changes nothing: the user
+    clicking a moment late must not see a finished run relabelled.
+    """
+    with _JOB_LOCK:
+        job = _JOBS.get(job_id)
+        if job is None:
+            return jsonify({"error": "Job tidak ditemukan"}), 404
+        jobs_cancel(_JOBS, job_id)
+        return jsonify(_job_snapshot(job))
+
+
 @app.route("/api/history")
 def api_history():
     return jsonify(read_history())
@@ -727,6 +767,10 @@ def _start_download(fn, command: str, link: str,
     what the run history shows - ``channel-full``, not ``channel_full`` - and
     because a test that stubs the engine should not change what the job calls
     itself.
+
+    ``fn`` is handed a ``should_stop`` hook that reads this job's cancellation
+    flag. That is the whole mechanism: the engine asks it between videos, so a
+    cancel stops the run without interrupting whatever is already downloading.
     """
     job_id = _start_download_job(command)
     emitter = _download_emitter(job_id)
@@ -734,14 +778,23 @@ def _start_download(fn, command: str, link: str,
     def finish(**fields) -> None:
         _update_download_job(job_id, **fields)
 
+    def should_stop() -> bool:
+        with _JOB_LOCK:
+            return jobs_is_cancelled(_JOBS, job_id)
+
     def target() -> None:
         try:
-            result = fn(link, options, emitter=emitter)
+            result = fn(link, options, emitter=emitter, should_stop=should_stop)
         except Exception as exc:  # noqa: BLE001 - surfaced to the UI
             finish(status="error", progress=1, phase="Gagal", error=str(exc))
             return
-        finish(status="done", progress=1, phase="Selesai",
-               result=_summarise(result))
+        summary = _summarise(result)
+        if isinstance(result, dict) and result.get("cancelled"):
+            # Deliberately no progress=1: the run stopped part way, and a full
+            # bar would claim the whole channel came down.
+            finish(status="cancelled", phase="Dibatalkan", result=summary)
+            return
+        finish(status="done", progress=1, phase="Selesai", result=summary)
 
     threading.Thread(target=target, daemon=True).start()
     return job_id

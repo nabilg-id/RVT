@@ -27,8 +27,11 @@ import time
 from typing import Any, Dict, MutableMapping, Optional
 
 #: A job is finished when it will never advance again. Used to decide what is
-#: safe to drop, and both terminal statuses count.
-_DONE_STATUSES = frozenset({"done", "error"})
+#: safe to drop, and every terminal status counts - a cancelled run is finished
+#: just as surely as a failed one. The spelling of "cancelled" is duplicated from
+#: ``clipper.progress`` on purpose: clipper depends on this package, so importing
+#: the constant back would be a cycle.
+_DONE_STATUSES = frozenset({"done", "error", "cancelled"})
 
 #: How many finished jobs to keep by default. Enough for the browser to have
 #: something to show after a reload, small enough that the registry cannot grow
@@ -42,6 +45,9 @@ _NEW_JOB: Dict[str, Any] = {
     "items": [],
     "result": None,
     "error": None,
+    #: Set when the user asks this job to stop. The channel workers read it
+    #: between videos, so it stops the next one rather than the current one.
+    "cancelled": False,
 }
 
 
@@ -78,6 +84,28 @@ def update(registry: MutableMapping[int, Dict[str, Any]], job_id: int,
         created = job.get("createdAt")
         if created is not None:
             job.setdefault("durationMs", _since(created))
+
+
+def cancel(registry: MutableMapping[int, Dict[str, Any]], job_id: int) -> bool:
+    """Ask a job of either shape to stop. True if this call raised the flag.
+
+    Download jobs are plain records; clip jobs are ``clipper.progress.Job``
+    objects that own their own lock and their own cancel. Both live in one
+    registry, so the caller should not have to know which shape it holds - this
+    is the same reason ``_status_of`` exists.
+
+    Returns False for an unknown id and for a job that has already settled: a
+    cancel arriving after the run finished must not rewrite its outcome.
+    """
+    job = registry.get(job_id)
+    if job is None:
+        return False
+    if isinstance(job, dict):
+        if job.get("status") in _DONE_STATUSES:
+            return False
+        job["cancelled"] = True
+        return True
+    return bool(job.cancel())
 
 
 def append_item(registry: MutableMapping[int, Dict[str, Any]], job_id: int,
@@ -127,6 +155,29 @@ def _status_of(job: Any) -> Optional[str]:
     if isinstance(job, dict):
         return job.get("status")
     return getattr(job, "status", None)
+
+
+def _cancelled_of(job: Any) -> bool:
+    """Read a job's cancellation flag from either shape the registry holds.
+
+    Same reason as ``_status_of``: one registry holds plain download records and
+    ``clipper.progress.Job`` objects, so anything that walks it has to cope with
+    both. An absent flag reads as not cancelled.
+    """
+    if isinstance(job, dict):
+        return bool(job.get("cancelled"))
+    return bool(getattr(job, "cancelled", False))
+
+
+def is_cancelled(registry: MutableMapping[int, Dict[str, Any]],
+                 job_id: int) -> bool:
+    """Whether a user has asked this job to stop. False for an unknown id.
+
+    This is the read side of :func:`cancel`, and it is what a worker calls
+    between items. An id the registry has already pruned answers False rather
+    than raising: a worker outliving its record is normal, not an error.
+    """
+    return _cancelled_of(registry.get(job_id))
 
 
 def finished_ids(registry: MutableMapping[int, Dict[str, Any]]) -> set:
