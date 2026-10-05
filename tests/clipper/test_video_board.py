@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 
 from clipper import app as A
+from rch.core import paths as A_paths
 
 VIDEO_ID = "dQw4w9WgXcQ"
 OTHER_ID = "jNQXAC9IVRw"
@@ -190,6 +191,56 @@ class TestBackfillOnStart:
         from rch.core.tracker import list_videos
 
         assert list_videos()[0]["status"] == "clipped"
+
+    def test_videos_from_before_the_folder_move_are_still_found(
+        self, tmp_path, monkeypatch
+    ):
+        """A harvest from before the product folder existed sits directly in
+        Downloads. Moving the default must not empty the board for those users.
+
+        Both resolvers are patched together, the way they behave in production.
+        The earlier test patched only one of them, which made the two roots look
+        unrelated - a state that cannot occur, because the product folder is
+        defined as a subfolder of Downloads - and so the branch under test was
+        never the one real users take.
+        """
+        monkeypatch.setattr(A, "OUTPUT_DIR", tmp_path / "clips")
+        downloads = tmp_path / "Downloads"
+        monkeypatch.setattr(A, "default_downloads_dir", lambda: downloads)
+        monkeypatch.setattr(
+            A, "default_product_dir", lambda: downloads / A_paths.PRODUCT_FOLDER
+        )
+
+        legacy = downloads / "Channel Lama"
+        legacy.mkdir(parents=True)
+        (legacy / "video.mp4").write_bytes(b"\x00" * 16)
+        (legacy / "link.txt").write_text(f"https://youtu.be/{OTHER_ID}\n",
+                                        encoding="utf-8")
+
+        assert A.backfill_ledger() == 1
+        from rch.core.tracker import list_videos
+
+        assert list_videos()[0]["videoId"] == OTHER_ID
+
+    def test_videos_in_the_product_folder_are_picked_up(self, tmp_path,
+                                                        monkeypatch):
+        monkeypatch.setattr(A, "OUTPUT_DIR", tmp_path / "clips")
+        downloads = tmp_path / "Downloads"
+        monkeypatch.setattr(A, "default_downloads_dir", lambda: downloads)
+        monkeypatch.setattr(
+            A, "default_product_dir", lambda: downloads / A_paths.PRODUCT_FOLDER
+        )
+
+        folder = downloads / A_paths.PRODUCT_FOLDER / "Channel Baru"
+        folder.mkdir(parents=True)
+        (folder / "video.mp4").write_bytes(b"\x00" * 16)
+        (folder / "link.txt").write_text(f"https://youtu.be/{OTHER_ID}\n",
+                                        encoding="utf-8")
+
+        assert A.backfill_ledger() == 1
+        from rch.core.tracker import list_videos
+
+        assert list_videos()[0]["videoId"] == OTHER_ID
 
     def test_existing_downloads_are_picked_up(self, tmp_path, monkeypatch):
         monkeypatch.setattr(A, "OUTPUT_DIR", tmp_path / "clips")

@@ -78,6 +78,91 @@ def _wait(client, job_id, tries=200):
     raise AssertionError("job tidak selesai")
 
 
+class TestDownloadEnvelopeIsSerialisable:
+    """/api/download has to survive the envelope the engine really returns.
+
+    The shared ``engine`` fixture stubs ``rch.youtube.video.download`` and answers
+    ``{"status": True, "result": {}}``, which is exactly why this went unnoticed:
+    the real function puts the download's ``Path`` in that slot, and Flask's JSON
+    provider does not handle ``os.PathLike``. The route then raised while building
+    its response, so a download that had genuinely succeeded returned a 500 HTML
+    page. The browser failed to parse it as JSON and reported a failure, while the
+    file sat on disk and the ledger recorded it as done. Every single time.
+
+    The fake here is placed one level lower, on the shared downloader, so the real
+    envelope is what gets built. Stubbing the envelope's own producer would test
+    the stub - and the ``engine`` fixture stubs exactly that producer, so these
+    tests deliberately do not request it.
+    """
+
+    @staticmethod
+    def _real_envelope(monkeypatch, tmp_path):
+        import sys
+        import types
+
+        class Result:
+            def __init__(self):
+                self.path = tmp_path / "Ridikc Video Toolkit" / "video.mp4"
+                self.title = "Judul Video"
+                self.duration = 212.0
+                self.video_id = "dQw4w9WgXcQ"
+
+            def __getattr__(self, name):
+                if name == "files":
+                    return []
+                raise AttributeError(name)
+
+        result = Result()
+        result.path.parent.mkdir(parents=True, exist_ok=True)
+        result.path.write_bytes(b"\x00" * 16)
+
+        class Downloader:
+            def __init__(self, *a, **k):
+                pass
+
+            def download(self, url, **kwargs):
+                return result
+
+        module = types.ModuleType("clipper.services.youtube_downloader")
+        module.YouTubeDownloader = Downloader
+        monkeypatch.setitem(sys.modules, "clipper.services.youtube_downloader",
+                            module)
+
+    def test_a_successful_download_is_not_a_500(self, monkeypatch, tmp_path):
+        self._real_envelope(monkeypatch, tmp_path)
+
+        response = _post("/api/download", url="https://youtu.be/dQw4w9WgXcQ")
+
+        assert response.status_code == 200, response.get_data(as_text=True)[:300]
+
+    def test_the_path_arrives_as_a_string(self, monkeypatch, tmp_path):
+        self._real_envelope(monkeypatch, tmp_path)
+
+        body = _post("/api/download", url="https://youtu.be/dQw4w9WgXcQ").get_json()
+
+        assert isinstance(body["result"]["path"], str)
+        assert body["result"]["path"].endswith("video.mp4")
+
+    def test_the_title_survives_too(self, monkeypatch, tmp_path):
+        self._real_envelope(monkeypatch, tmp_path)
+
+        body = _post("/api/download", url="https://youtu.be/dQw4w9WgXcQ").get_json()
+
+        assert body["result"]["title"] == "Judul Video"
+
+    def test_the_engine_itself_returns_a_string_path(self, monkeypatch, tmp_path):
+        """Guard the producer, not only the route, so the CLI and any future
+        caller get the same safe envelope."""
+        from rch.youtube import video as V
+
+        self._real_envelope(monkeypatch, tmp_path)
+
+        envelope = V.download("https://youtu.be/dQw4w9WgXcQ", {}, downloader=None)
+
+        assert envelope["status"] is True
+        assert isinstance(envelope["result"]["path"], str)
+
+
 class TestChannelRoutes:
     @pytest.mark.parametrize("route", [
         "/api/channel-info", "/api/channel-video", "/api/channel-full",

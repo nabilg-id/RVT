@@ -381,7 +381,13 @@ def _download_via_shared(url: str, opts: Dict, downloader=None) -> Dict:
         "status": True,
         "message": None,
         "result": {
-            "path": path,
+            # A string, not the Path itself. This envelope is jsonify'd by
+            # /api/download, and Flask's provider does not handle
+            # os.PathLike - it raised and turned a finished download into a 500
+            # HTML page, which the browser then failed to parse as JSON, so the
+            # user saw an error for a file that had already been written. The
+            # tracker above already stringified for exactly this reason.
+            "path": str(path) if path else None,
             "title": title,
             "duration": getattr(result, "duration", None),
             "videoId": getattr(result, "video_id", None) or video_id,

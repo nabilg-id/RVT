@@ -987,8 +987,15 @@ def backfill_ledger() -> int:
 
     product_dir = Path(default_product_dir())
     legacy_dir = Path(default_downloads_dir())
+    # Both, unconditionally. The product folder is defined as a subfolder of
+    # Downloads, so guarding on "are these different" was always false and the
+    # legacy root was never read - which is exactly the population the guard was
+    # written for. Re-reading Downloads also walks the product folder as one of
+    # its children, which is harmless: the scanner only accepts a direct child
+    # that holds a video.mp4, and the product folder holds channel folders, not
+    # media. When the two paths coincide the list simply holds one entry.
     roots = [product_dir]
-    if legacy_dir != product_dir.parent:
+    if legacy_dir != product_dir:
         roots.append(legacy_dir)
 
     total = 0
