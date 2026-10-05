@@ -2,7 +2,7 @@
 
 # Ridikc Video Toolkit
 
-**Generator clip viral YouTube dengan GUI web lokal, plus pustaka akuisisi RCH.**
+**Generator clip viral YouTube dengan GUI web lokal, plus pengunduh channel YouTube.**
 
 _Tempel satu URL, dapatkan clip pendek siap upload — dibangun untuk penggunaan internal R&D Ridikc._
 

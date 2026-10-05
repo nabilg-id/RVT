@@ -47,7 +47,7 @@ class TestTheSecondPageExists:
         pass a status check while being the wrong page entirely."""
         body = client.get("/download", headers=HOST).get_data(as_text=True)
 
-        assert "Ridikc Content Harvester" in body
+        assert "Ridikc Video Toolkit" in body
         assert "data-act=\"channel-full\"" in body
 
     def test_the_clipper_page_is_still_the_root(self, client):

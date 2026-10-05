@@ -59,12 +59,23 @@ for %%F in ("%USERPROFILE%\Desktop\VCLIP-GUI.bat" "%USERPROFILE%\Desktop\RCH-GUI
 )
 if exist "%USERPROFILE%\Desktop\VCLIP-GUI.bat" echo Shortcut: %USERPROFILE%\Desktop\VCLIP-GUI.bat
 if exist "%USERPROFILE%\Desktop\RCH-GUI.bat" echo Shortcut: %USERPROFILE%\Desktop\RCH-GUI.bat
+
+REM Launcher CLI di Desktop. Memanggil rch.exe lewat path penuh supaya tidak
+REM bentrok dengan package npm bernama "rch" yang kebetulan ada di PATH.
+set "CLI_LAUNCHER=%CD%\launchers\rch-cli.bat"
+if not exist "%CLI_LAUNCHER%" set "CLI_LAUNCHER=%~dp0launchers\rch-cli.bat"
+if exist "%USERPROFILE%\Desktop\RCH-CLI.bat" del /f /q "%USERPROFILE%\Desktop\RCH-CLI.bat" >nul 2>nul
+(
+  echo @echo off
+  echo call "%CLI_LAUNCHER%" %%*
+) > "%USERPROFILE%\Desktop\RCH-CLI.bat"
+if exist "%USERPROFILE%\Desktop\RCH-CLI.bat" echo Shortcut: %USERPROFILE%\Desktop\RCH-CLI.bat
 echo.
 
 echo ============================================
 echo  Selesai. Buka "VCLIP-GUI" atau "RCH-GUI" di Desktop.
 echo  GUI: http://127.0.0.1:8787  (tab / dan /download)
-echo  CLI: %PY% -m rch --help
+echo  CLI: RCH-CLI.bat channel-full ^<url^>  (atau %PY% -m rch --help)
 echo ============================================
 pause
 endlocal

@@ -146,7 +146,7 @@ def _build_options(**kwargs) -> Dict[str, Any]:
 @click.version_option(__version__, "-V", "--version", message="%(version)s")
 @click.pass_context
 def cli(ctx: click.Context) -> None:
-    """Ridikc Content Harvester — unduh video, thumbnail, dan metadata YouTube."""
+    """Ridikc Video Toolkit — unduh video, thumbnail, dan metadata YouTube."""
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
 

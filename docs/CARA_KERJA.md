@@ -13,7 +13,7 @@ riwayat.
 
 ## 1. Ringkasan
 
-Ridikc Content Harvester adalah **alat Python 3.10+** untuk mengunduh media dan
+Ridikc Video Toolkit adalah **alat Python 3.10+** untuk mengunduh media dan
 thumbnail dari YouTube. Modular per fitur (`rch/youtube/`), dengan lapisan
 inti yang tidak bergantung pada jaringan sehingga seluruh test bisa
 berjalan offline.
