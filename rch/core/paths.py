@@ -35,6 +35,16 @@ _FOLDERID_DOWNLOADS = "{374DE290-123F-4565-9164-39C4925E467B}"
 _XDG_LINE = re.compile(r'^\s*XDG_DOWNLOAD_DIR\s*=\s*"(?P<path>[^"]*)"')
 _USER_DIRS_RELATIVE = Path(".config") / "user-dirs.dirs"
 
+#: Everything the toolkit writes lands in this one folder inside the OS
+#: Downloads folder. The two features - the clip generator and the channel
+#: harvester - would otherwise drop loose ``clips`` and ``downloads`` folders
+#: next to each other in a folder the user also fills with unrelated files.
+PRODUCT_FOLDER = "Ridikc Video Toolkit"
+
+#: Subfolder for rendered clips, so clip output and harvested video stay apart
+#: inside the product folder.
+CLIP_SUBDIR = "clips"
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
@@ -169,6 +179,24 @@ def default_downloads_dir() -> Path:
     # Nothing usable: stay inside the repo rather than writing somewhere
     # surprising or failing outright.
     return _repo_root() / "downloads"
+
+
+def default_product_dir() -> Path:
+    """The toolkit's own folder inside the OS Downloads folder.
+
+    Channel harvests and rendered clips are different kinds of output, so they
+    get their own subfolder under one branded parent rather than both landing
+    loose in a folder the user also fills with unrelated files.
+
+    Falls back with :func:`default_downloads_dir`, which itself falls back to
+    the repo, so this never returns a path that cannot be created.
+    """
+    return default_downloads_dir() / PRODUCT_FOLDER
+
+
+def default_clip_output_dir() -> Path:
+    """Where rendered clips go by default."""
+    return default_product_dir() / CLIP_SUBDIR
 
 
 def ensure_dir(path: Path) -> Path:

@@ -18,12 +18,13 @@ from . import __version__
 from .config import CONFIG
 from .core.events import phase_label
 from .core.export import export_metadata
-from .core.paths import default_downloads_dir
+from .core.paths import default_product_dir
 from .core.report import append_history, write_report
 
-#: Harvest output defaults to the operating system's Downloads folder, not to
-#: ./downloads relative to whatever directory the command was started from.
-DEFAULT_OUT = str(default_downloads_dir())
+#: Harvest output defaults to a branded folder inside the operating system's
+#: Downloads folder, not to ./downloads relative to whatever directory the
+#: command was started from.
+DEFAULT_OUT = str(default_product_dir())
 DEFAULT_WEB_HOST = "127.0.0.1"
 DEFAULT_WEB_PORT = 8787
 

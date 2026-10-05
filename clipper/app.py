@@ -25,7 +25,7 @@ from rch.core.jobs import detach as jobs_detach
 from rch.core.jobs import is_cancelled as jobs_is_cancelled
 from rch.core.jobs import prune as jobs_prune
 from rch.core.jobs import update as jobs_update
-from rch.core.paths import default_downloads_dir
+from rch.core.paths import default_downloads_dir, default_product_dir
 
 from .config import (
     OUTPUT_DIR,
@@ -674,7 +674,7 @@ def serve_clip(name: str):
 # a job id mean one job across both halves.
 # ---------------------------------------------------------------------------
 
-DEFAULT_OUT = str(default_downloads_dir())
+DEFAULT_OUT = str(default_product_dir())
 
 
 def _body() -> Dict[str, Any]:
@@ -975,15 +975,29 @@ def backfill_ledger() -> int:
     which pointed at a ``downloads`` folder next to the clip output and so read
     nothing at all once downloads moved to the native Downloads folder - the
     board silently started empty for every existing user.
+
+    Harvests now land in a branded subfolder of the Downloads folder, but runs
+    from before that change wrote straight into Downloads itself. Both are read,
+    newest first, so moving the default does not empty anyone's board.
     """
     try:
         from rch.core.tracker import backfill_from_disk
     except Exception:  # noqa: BLE001 - tracker unavailable, board just stays empty
         return 0
-    try:
-        return backfill_from_disk(Path(default_downloads_dir()), OUTPUT_DIR)
-    except Exception:  # noqa: BLE001 - never block startup on bookkeeping
-        return 0
+
+    product_dir = Path(default_product_dir())
+    legacy_dir = Path(default_downloads_dir())
+    roots = [product_dir]
+    if legacy_dir != product_dir.parent:
+        roots.append(legacy_dir)
+
+    total = 0
+    for root in roots:
+        try:
+            total += backfill_from_disk(root, OUTPUT_DIR)
+        except Exception:  # noqa: BLE001 - never block startup on bookkeeping
+            continue
+    return total
 
 
 def run_server(host: str = RCH_HOST, port: int = RCH_PORT, open_browser: bool = True) -> None:

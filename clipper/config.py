@@ -11,6 +11,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from rch.core.paths import default_clip_output_dir
+
 if hasattr(sys.stdout, "reconfigure"):
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -73,7 +75,7 @@ def _env_path(name: str, default: Path) -> Path:
 
 
 GEMINI_API_KEY = _env_str("GEMINI_API_KEY")
-OUTPUT_DIR = _env_path("OUTPUT_DIR", REPO_ROOT / "clips")
+OUTPUT_DIR = _env_path("OUTPUT_DIR", default_clip_output_dir())
 TEMP_DIR = _env_path("TEMP_DIR", REPO_ROOT / "temp")
 COOKIES_FILE = _env_path("COOKIES_FILE", REPO_ROOT / "cookies.txt")
 ASSET_DIR = _env_path("ASSET_DIR", REPO_ROOT / "asset")

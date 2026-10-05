@@ -24,14 +24,29 @@ The guard is deliberately narrow. Only external hosts are refused, only yt-dlp
 is refused at the subprocess boundary, and anything a test patches itself still
 wins because the fixture is set up before the test body runs.
 """
+import os
 import socket
 import subprocess
+import tempfile
 import traceback
 from pathlib import Path
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent
+
+#: Redirect the Downloads resolver before any test module is imported.
+#:
+#: ``rch.core.paths`` resolves the real operating-system Downloads folder, and
+#: ``clipper.config`` creates its output directory at import time. Doing this in
+#: an autouse fixture would be too late - collection imports the modules first -
+#: so merely running the suite would create a ``Ridikc Video Toolkit`` folder
+#: inside the developer's actual Downloads. Module-level code here runs first,
+#: and the directory is created up front because the resolver only accepts a
+#: folder that already exists.
+_TEST_DOWNLOADS = Path(tempfile.mkdtemp(prefix="rvt-test-downloads-")) / "Downloads"
+_TEST_DOWNLOADS.mkdir(parents=True, exist_ok=True)
+os.environ["RCH_DOWNLOADS_DIR"] = str(_TEST_DOWNLOADS)
 
 _SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "node_modules",
               ".ruff_cache"}

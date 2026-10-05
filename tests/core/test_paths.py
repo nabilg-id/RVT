@@ -304,6 +304,55 @@ class TestCandidateLoop:
         assert P.default_downloads_dir() == REPO_ROOT / "downloads"
 
 
+class TestProductDir:
+    """Everything the toolkit produces is grouped under one folder inside the
+    OS Downloads folder, so the user's Downloads is not littered with loose
+    ``clips`` and ``downloads`` folders from two different features."""
+
+    def test_sits_inside_the_native_downloads_folder(self, fake_home, monkeypatch,
+                                                    no_override):
+        monkeypatch.setattr(P.sys, "platform", "linux")
+        monkeypatch.setattr(P, "_linux_xdg_downloads", lambda: None)
+
+        result = P.default_product_dir()
+
+        assert result.parent == fake_home / "Downloads"
+        assert result.name == P.PRODUCT_FOLDER
+
+    def test_folder_name_is_the_brand(self):
+        assert P.PRODUCT_FOLDER == "Ridikc Video Toolkit"
+
+    def test_override_moves_the_whole_product_folder(self, tmp_path, monkeypatch,
+                                                     no_override):
+        target = tmp_path / "unduhan-saya"
+        monkeypatch.setenv("RCH_DOWNLOADS_DIR", str(target))
+
+        assert P.default_product_dir() == target / P.PRODUCT_FOLDER
+
+    def test_result_is_always_absolute(self, tmp_path, monkeypatch, no_override):
+        monkeypatch.setattr(P.sys, "platform", "linux")
+        assert P.default_product_dir().is_absolute()
+
+    def test_clip_output_is_a_subfolder_of_it(self, fake_home, monkeypatch,
+                                              no_override):
+        monkeypatch.setattr(P.sys, "platform", "linux")
+        monkeypatch.setattr(P, "_linux_xdg_downloads", lambda: None)
+
+        assert P.default_clip_output_dir() == (
+            fake_home / "Downloads" / P.PRODUCT_FOLDER / "clips"
+        )
+
+    def test_falls_back_to_repo_when_no_downloads_folder_exists(
+        self, tmp_path, monkeypatch, no_override
+    ):
+        monkeypatch.setattr(P.sys, "platform", "linux")
+        monkeypatch.setattr(P, "_linux_xdg_downloads", lambda: None)
+        monkeypatch.setattr(Path, "home", classmethod(
+            lambda cls: tmp_path / "no-such-home"))
+
+        assert P.default_product_dir() == REPO_ROOT / "downloads" / P.PRODUCT_FOLDER
+
+
 class TestEnsureDir:
     def test_creates_the_directory(self, tmp_path):
         target = tmp_path / "a" / "b"
