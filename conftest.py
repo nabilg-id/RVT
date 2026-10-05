@@ -161,14 +161,29 @@ def block_network(monkeypatch, request):
         _guard_argv(args)
         return real_run(args, *rest, **kwargs)
 
-    def _guarded_popen(args, *rest, **kwargs):
-        _guard_argv(args)
-        return real_popen(args, *rest, **kwargs)
+    class _GuardedPopen(real_popen):
+        """The real Popen, refusing to start yt-dlp.
+
+        A plain function would be the obvious way to wrap this, but
+        ``subprocess.Popen`` is subclassed by libraries at import time - yt_dlp
+        does ``class Popen(subprocess.Popen)`` - and a function in that slot
+        raises ``TypeError: function() argument 'code' must be code, not str``
+        the moment such an import happens inside a test. That is not a cosmetic
+        failure: it made ``clipper.services.youtube_downloader`` and
+        ``video_processor`` unimportable during the run, which pushed the
+        downloader and the whole clip pipeline behind a skip and hid real
+        regressions behind a green tick. Staying a subclass keeps the slot a
+        type while still refusing the one command we care about.
+        """
+
+        def __init__(self, args, *rest, **kwargs):
+            _guard_argv(args)
+            super().__init__(args, *rest, **kwargs)
 
     monkeypatch.setattr(socket.socket, "connect", _guarded_connect)
     monkeypatch.setattr(socket, "getaddrinfo", _guarded_getaddrinfo)
     monkeypatch.setattr(subprocess, "run", _guarded_run)
-    monkeypatch.setattr(subprocess, "Popen", _guarded_popen)
+    monkeypatch.setattr(subprocess, "Popen", _GuardedPopen)
 
 
 @pytest.fixture(scope="session", autouse=True)

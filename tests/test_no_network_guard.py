@@ -55,3 +55,43 @@ class TestGuardCatchesSubprocess:
         )
         assert out.returncode == 0
         assert "halo" in out.stdout
+
+    def test_popen_is_still_usable_as_a_base_class(self):
+        """The guard must not cost libraries their ability to subclass Popen.
+
+        yt_dlp defines ``class Popen(subprocess.Popen)`` at import time. A
+        function installed in that slot raises ``TypeError: function()
+        argument 'code' must be code, not str`` the moment such an import runs
+        inside a test, which made ``clipper.services.youtube_downloader`` and
+        ``video_processor`` unimportable and hid a third of the suite behind a
+        skip. Guarding has to keep the type a type.
+        """
+        class Derived(subprocess.Popen):
+            pass
+
+        assert isinstance(Derived, type)
+
+    def test_a_subclass_still_cannot_spawn_ytdlp(self):
+        """Subclassing must not become a way around the guard."""
+
+        class Sneaky(subprocess.Popen):
+            def __init__(self, *a, **k):
+                super().__init__(["yt-dlp", "--version"])
+
+        with pytest.raises(AssertionError, match="yt-dlp"):
+            Sneaky()
+
+    def test_a_subclass_can_still_spawn_ordinary_commands(self):
+        """The guard stays narrow: only yt-dlp is refused."""
+        import sys
+
+        class Ordinary(subprocess.Popen):
+            pass
+
+        proc = Ordinary(
+            [sys.executable, "-c", "print('halo')"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        out, _ = proc.communicate(timeout=60)
+        assert proc.returncode == 0
+        assert "halo" in out
