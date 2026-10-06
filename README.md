@@ -9,7 +9,7 @@ Dibangun untuk penggunaan internal R&D Ridikc.
 
 [![version](https://img.shields.io/badge/version-2.2.1-61afef.svg?style=flat-square)](pyproject.toml)
 [![python](https://img.shields.io/badge/python-3.10%2B-61afef.svg?style=flat-square)](https://www.python.org)
-[![tests](https://img.shields.io/badge/tests-2045%20passed-3fb950.svg?style=flat-square)](#-testing)
+[![tests](https://img.shields.io/badge/tests-2060%20passed-3fb950.svg?style=flat-square)](#-testing)
 [![coverage](https://img.shields.io/badge/coverage-97%25-3fb950.svg?style=flat-square)](#-testing)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
@@ -47,6 +47,20 @@ Dibangun untuk penggunaan internal R&D Ridikc.
 | 🛑 **Bisa dibatalkan** | Tombol **Cancel** menghentikan proses di antara video, tanpa merusak yang sedang berjalan. |
 | 🎨 **7 gaya caption** | Clean White, Viral Yellow/Red/Green, Neon Cyan/Pink, Bold Black BG. |
 | 📋 **Riwayat** | Semua clip dan semua harvest channel tersimpan dan bisa dicari lagi. |
+
+### Tampilan
+
+Satu aplikasi, dua halaman dalam satu jendela browser.
+
+**Halaman Clipper (`/`)** — tempel URL, cek info, atur jumlah clip dan gaya
+caption, lalu klik **Generate Clip**.
+
+![Halaman Clipper: form URL, pengaturan clip, tombol Generate, panel progres, dan tabel riwayat](docs/images/gui-clipper.png)
+
+**Halaman Downloader (`/download`)** — tempel URL video atau channel, pilih
+format dan kualitas, lalu unduh video, channel, atau metadata lengkapnya.
+
+![Halaman Downloader: form URL, pilihan format dan kualitas, tombol Cek Info, Unduh Video, Info Channel, Channel Lengkap, dan tabel status video](docs/images/gui-downloader.png)
 
 <details>
 <summary><b>🔍 Rincian teknis fitur (untuk developer)</b></summary>
@@ -421,9 +435,13 @@ python -m pytest --cov --cov-report=term-missing        # + coverage
 python -m pytest --cov --cov-fail-under=97              # gerbang CI
 ```
 
-**2045 test, semuanya lulus, coverage 97%.** Test pipeline clip otomatis
-**di-skip** bila dependency berat belum terpasang (`pytest.importorskip`), jadi
-suite inti tetap hijau di mesin ringan maupun di CI.
+**Ribuan test, semuanya lulus, coverage di atas 97%.** Angka persis ada di
+badge dan di output `pytest` di bawah — dicek dari sana, bukan ditulis manual,
+karena angka yang ditulis tangan selalu basi.
+
+Test pipeline clip otomatis **di-skip** bila dependency berat belum terpasang
+(`pytest.importorskip`), jadi suite inti tetap hijau di mesin ringan maupun
+di CI.
 
 > `requirements-dev.txt` sengaja tidak memakai `requirements.txt`: torch +
 > faster-whisper + mediapipe akan membuat runner CI jauh lebih besar dan lambat.

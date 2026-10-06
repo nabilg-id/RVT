@@ -53,8 +53,30 @@ class TestTheSecondPageExists:
     def test_the_clipper_page_is_still_the_root(self, client):
         body = client.get("/", headers=HOST).get_data(as_text=True)
 
-        assert "YouTube Viral Clipper" in body
+        assert "RCH_REPO" not in body  # sanity: this is not the launcher
         assert "data-act=" not in body
+
+    def test_both_pages_carry_the_same_product_name(self, client):
+        """One product, one name.
+
+        The rebrand renamed the downloader page and left the clipper page
+        calling itself 'YouTube Viral Clipper' with a VC badge, so a user
+        switching tabs in one window watched the product change its own name.
+        Both pages are the same application behind one tab bar, so the header
+        is part of the product, not of the page.
+        """
+        clipper_page = client.get("/", headers=HOST).get_data(as_text=True)
+
+        assert "Ridikc Video Toolkit" in clipper_page
+        assert "YouTube Viral Clipper" not in clipper_page
+        assert "RCH" in clipper_page, "the clipper badge still says VC"
+
+    def test_neither_page_keeps_the_old_name(self, client):
+        for path in ("/", "/download"):
+            body = client.get(path, headers=HOST).get_data(as_text=True)
+            assert "Content Harvester" not in body, (
+                f"{path} still carries the retired product name"
+            )
 
 
 class TestAssetsAreNamespaced:

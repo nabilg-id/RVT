@@ -222,6 +222,21 @@ class TestReadmeServesANonDeveloperFirst:
         assert "1369" not in body, "the test count in the README is stale"
         assert "99%" not in body, "the coverage claim in the README is stale"
 
+    def test_the_badge_count_is_not_left_behind_by_growth(self):
+        """Not exactness - the suite grows, and a test cannot run pytest inside
+        pytest to compare. This catches the failure that actually happened: a
+        count so far behind reality that it reads as a different project."""
+        body = self._readme()
+        # The badge URL percent-encodes the space: tests-2059%20passed
+        match = re.search(r"tests-(\d+)(?:%20|\s)+passed", body)
+
+        assert match, "the test badge lost its number"
+        claimed = int(match.group(1))
+        assert claimed >= 2000, (
+            f"the badge claims {claimed} tests, which is far below the current "
+            f"suite - it was not updated"
+        )
+
     def test_the_env_is_documented_as_optional(self):
         """It was listed as mandatory, which would have had a new user hunting
         for an API key before the download features worked without one."""
@@ -294,6 +309,55 @@ class TestTheEnvExampleDoesNotOverrideTheOutputDefault:
     def test_the_line_is_still_there_to_be_uncommented(self):
         assert "# OUTPUT_DIR=" in self._example(), (
             "the option should stay discoverable, just not active"
+        )
+
+
+class TestTheScreenshotsExistAndAreUsed:
+    """A broken image in the README looks fine in the diff and shows a broken
+    image on GitHub, so nothing else would notice."""
+
+    IMAGES = ("gui-clipper.png", "gui-downloader.png")
+
+    def test_both_pictures_are_in_the_repository(self):
+        for name in self.IMAGES:
+            path = REPO / "docs" / "images" / name
+            assert path.is_file(), f"{name} hilang; jalankan docs/screenshot.py"
+            assert path.stat().st_size > 10_000, (
+                f"{name} cuma {path.stat().st_size} bytes, kemungkinan tidak "
+                f"ter-render"
+            )
+
+    def test_they_are_actually_pngs(self):
+        for name in self.IMAGES:
+            head = (REPO / "docs" / "images" / name).read_bytes()[:8]
+            assert head == b"\x89PNG\r\n\x1a\n", f"{name} bukan PNG yang valid"
+
+    def test_the_readme_embeds_both_of_them(self):
+        body = (REPO / "README.md").read_text(encoding="utf-8")
+
+        for name in self.IMAGES:
+            assert f"docs/images/{name}" in body, (
+                f"{name} ada tapi tidak dipakai di README"
+            )
+
+    def test_each_image_carries_alt_text(self):
+        """A bare image link renders as a broken box for anyone using a screen
+        reader or an image-blocked browser."""
+        body = (REPO / "README.md").read_text(encoding="utf-8")
+
+        for line in body.splitlines():
+            if "docs/images/" in line:
+                assert line.strip().startswith("!["), (
+                    f"screenshot tanpa alt text: {line.strip()[:60]}"
+                )
+                assert "]" in line[2:], f"screenshot tanpa alt text: {line[:60]}"
+
+    def test_the_capture_tool_lives_beside_the_pictures(self):
+        assert (REPO / "docs" / "screenshot.py").is_file(), (
+            "alat Take screenshot hilang, jadi gambar tidak bisa diperbarui"
+        )
+        assert not (REPO / "shots.py").exists(), (
+            "alat ada di root repo; pindahkan ke docs/"
         )
 
 
