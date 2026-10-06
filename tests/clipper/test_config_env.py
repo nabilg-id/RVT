@@ -16,6 +16,8 @@ import sys
 import dotenv
 import pytest
 
+from rch.core import paths as paths_mod
+
 
 def reload_config(monkeypatch, **env):
     """Re-import clipper.config with ``env`` applied.
@@ -138,6 +140,64 @@ class TestNumericValues:
         c = reload_config(monkeypatch, RCH_PORT="   ", RCH_HISTORY_LIMIT="")
         assert c.RCH_PORT == 8787
         assert c.RCH_HISTORY_LIMIT == 20
+
+
+class TestUnusableOutputDirectoryDoesNotKillTheApp:
+    """An output folder that cannot be created must not stop the import.
+
+    Since the default output moved out of the repo into the OS Downloads folder,
+    this mkdir can fail for reasons the user cannot do anything about: OneDrive
+    not signed in, a folder whose ACL denies writing, a full disk, a network
+    share that is offline. It runs unguarded at import time, so the exception did
+    not fail one download - it killed ``clipper.config``, which takes the GUI and
+    the CLI down with it, both on a traceback.
+
+    ``rch.core.paths.ensure_dir`` exists precisely to absorb this, and was not
+    called from production code anywhere.
+    """
+
+    def test_import_survives_an_uncreatable_output_dir(self, tmp_path,
+                                                      monkeypatch):
+        blocker = tmp_path / "a-regular-file"
+        blocker.write_text("not a directory", encoding="utf-8")
+
+        # ensure_dir's fallback is <repo>/downloads. Pointed at tmp_path so the
+        # test does not litter the working tree - and so a leftover folder
+        # cannot make the assertion pass by accident.
+        monkeypatch.setattr(paths_mod, "_repo_root", lambda: tmp_path)
+
+        # No exception: that is the whole assertion.
+        c = reload_config(monkeypatch, OUTPUT_DIR=str(blocker / "clips"))
+
+        assert c.OUTPUT_DIR.is_dir(), "the fallback must be a usable directory"
+
+    def test_the_fallback_is_actually_writable(self, tmp_path, monkeypatch):
+        blocker = tmp_path / "a-regular-file"
+        blocker.write_text("not a directory", encoding="utf-8")
+        monkeypatch.setattr(paths_mod, "_repo_root", lambda: tmp_path)
+
+        c = reload_config(monkeypatch, OUTPUT_DIR=str(blocker / "clips"))
+
+        probe = c.OUTPUT_DIR / "probe.mp4"
+        probe.write_bytes(b"\x00" * 8)
+        assert probe.is_file()
+
+    def test_an_uncreatable_temp_dir_also_survives(self, tmp_path, monkeypatch):
+        blocker = tmp_path / "a-regular-file"
+        blocker.write_text("not a directory", encoding="utf-8")
+        monkeypatch.setattr(paths_mod, "_repo_root", lambda: tmp_path)
+
+        c = reload_config(monkeypatch, TEMP_DIR=str(blocker / "temp"))
+
+        assert c.TEMP_DIR.is_dir()
+
+    def test_a_usable_output_dir_is_still_honoured(self, tmp_path, monkeypatch):
+        """Guard against over-correcting into always using the fallback."""
+        wanted = tmp_path / "keluaran"
+
+        c = reload_config(monkeypatch, OUTPUT_DIR=str(wanted))
+
+        assert c.OUTPUT_DIR == wanted
 
 
 class TestHelperUnits:

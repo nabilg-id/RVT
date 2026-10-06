@@ -11,7 +11,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from rch.core.paths import default_clip_output_dir
+from rch.core.paths import default_clip_output_dir, ensure_dir
 
 if hasattr(sys.stdout, "reconfigure"):
     try:
@@ -75,8 +75,24 @@ def _env_path(name: str, default: Path) -> Path:
 
 
 GEMINI_API_KEY = _env_str("GEMINI_API_KEY")
-OUTPUT_DIR = _env_path("OUTPUT_DIR", default_clip_output_dir())
-TEMP_DIR = _env_path("TEMP_DIR", REPO_ROOT / "temp")
+# ensure_dir, not a bare mkdir. This runs at import, and the default output now
+# lives in the OS Downloads folder rather than inside the repo, so it can fail
+# for reasons the user cannot do anything about: OneDrive not signed in, an ACL
+# that denies writing, a full disk. Unguarded, that exception did not fail one
+# download - it killed this module, and with it both the GUI and the CLI, each
+# on a traceback. ensure_dir falls back to a folder inside the repo so the app
+# still starts. The move is announced, because silently writing somewhere else
+# is its own kind of confusing.
+_requested_output = _env_path("OUTPUT_DIR", default_clip_output_dir())
+_requested_temp = _env_path("TEMP_DIR", REPO_ROOT / "temp")
+OUTPUT_DIR = ensure_dir(_requested_output)
+TEMP_DIR = ensure_dir(_requested_temp)
+if OUTPUT_DIR != _requested_output:
+    print(f"⚠️ Folder output '{_requested_output}' tidak bisa dibuat. "
+          f"Menulis ke '{OUTPUT_DIR}'.")
+if TEMP_DIR != _requested_temp:
+    print(f"⚠️ Folder sementara '{_requested_temp}' tidak bisa dibuat. "
+          f"Menulis ke '{TEMP_DIR}'.")
 COOKIES_FILE = _env_path("COOKIES_FILE", REPO_ROOT / "cookies.txt")
 ASSET_DIR = _env_path("ASSET_DIR", REPO_ROOT / "asset")
 TRANSITION_FILE = ASSET_DIR / "transisi.mp4"
@@ -94,6 +110,3 @@ OPENROUTER_MODEL = _env_str("OPENROUTER_MODEL", "openrouter/free")
 RCH_HOST = _env_str("RCH_HOST", "127.0.0.1")
 RCH_PORT = int(_env_str("RCH_PORT", "8787"))
 RCH_HISTORY_LIMIT = int(_env_str("RCH_HISTORY_LIMIT", "20"))
-
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-TEMP_DIR.mkdir(parents=True, exist_ok=True)
