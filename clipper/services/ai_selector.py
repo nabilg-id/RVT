@@ -17,8 +17,21 @@ class AISelector:
         # config.py already strips whitespace, but a key made only of spaces is
         # truthy: without this check it would be sent as a bearer token and come
         # back as an opaque 401 instead of the clear message below.
+        #
+        # This message is what a new user sees in the GUI when Generate fails,
+        # and on a fresh install it is the single most likely first failure, so
+        # it carries the whole remedy: which variable, which file, and where to
+        # get a key. Naming the variable alone is not enough - neither the
+        # filename ".env" nor the fact that the key is free at openrouter.ai is
+        # guessable from the name.
         if not (OPENROUTER_API_KEY or "").strip():
-            raise ValueError("OPENROUTER_API_KEY is not set in environment variables.")
+            raise ValueError(
+                "OPENROUTER_API_KEY belum diisi. Buatkan file .env di folder "
+                "project (salin clipper/.env.example), lalu isi "
+                "OPENROUTER_API_KEY=... Ambil key gratis di "
+                "https://openrouter.ai/keys. Tanpa key ini, fitur Generate "
+                "tidak bisa berjalan; fitur unduh YouTube tetap normal."
+            )
 
         self.client = OpenAI(
             base_url="https://openrouter.ai/api/v1",

@@ -230,6 +230,73 @@ class TestReadmeServesANonDeveloperFirst:
         assert "**Wajib**" not in body, "the README still demands a key"
 
 
+class TestTheMacosInstallerIsNotASecondCopy:
+    """setup-gui.command used to be a full duplicate of setup-gui.sh.
+
+    It drifted - it kept the old four-step flow and never learned about
+    `pip install -e .` - so a mac user who double-clicked it got every
+    dependency installed and no ``rch`` at all. That is the same failure the
+    Windows installer was just fixed for, sitting in the file mac users are
+    most likely to click.
+
+    It now delegates, so there is one installer to keep correct.
+    """
+
+    def test_it_delegates_instead_of_duplicating(self):
+        body = (REPO / "setup-gui.command").read_text(encoding="utf-8")
+
+        assert "setup-gui.sh" in body, (
+            "setup-gui.command must hand over to setup-gui.sh"
+        )
+        assert "pip install -r requirements.txt" not in body, (
+            "setup-gui.command still installs dependencies itself, so it can "
+            "drift again"
+        )
+
+    @pytest.mark.parametrize("script", ["setup-gui.sh", "setup-gui.command"])
+    def test_nothing_claims_to_be_the_only_installer(self, script):
+        body = (REPO / script).read_text(encoding="utf-8")
+        assert "installer macOS / Linux" in body
+
+    def test_a_missing_shell_script_says_so(self):
+        """The wrapper's only failure mode is the file not being there, and a
+        silently exiting terminal gives the user nothing."""
+        body = (REPO / "setup-gui.command").read_text(encoding="utf-8")
+
+        assert "tidak ditemukan" in body
+        assert "exit 1" in body
+
+
+class TestTheEnvExampleDoesNotOverrideTheOutputDefault:
+    """.env.example shipped OUTPUT_DIR=./clips.
+
+    Copying the template to .env therefore placed clips in the project folder
+    instead of the OS Downloads folder, quietly undoing the default the README
+    documents - and a user who followed the configuration step would not notice,
+    because the files still appeared, just in the wrong place.
+    """
+
+    def _example(self) -> str:
+        return (REPO / "clipper" / ".env.example").read_text(encoding="utf-8")
+
+    def test_output_dir_is_not_set_to_a_repo_relative_path(self):
+        active = [
+            line.strip()
+            for line in self._example().splitlines()
+            if line.strip().startswith("OUTPUT_DIR=")
+        ]
+
+        assert active == [], (
+            f".env.example assigns OUTPUT_DIR ({active}), which overrides the "
+            f"Downloads default for anyone who copies it"
+        )
+
+    def test_the_line_is_still_there_to_be_uncommented(self):
+        assert "# OUTPUT_DIR=" in self._example(), (
+            "the option should stay discoverable, just not active"
+        )
+
+
 class TestTheRepositoryPathIsDiscoverable:
     def test_the_launcher_has_no_hardcoded_machine_path(self):
         """A path baked into the repo would work on this machine and nowhere

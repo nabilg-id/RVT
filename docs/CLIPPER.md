@@ -40,8 +40,14 @@ Salin `clipper/.env.example` ke `.env` di root repo, lalu isi:
 OPENROUTER_API_KEY=sk-or-v1-xxxxxxxx
 ```
 
-**`OPENROUTER_API_KEY` itu wajib.** Tanpa itu, pemilihan momen AI gagal dan
-video akan dipotong secara acak.
+**`OPENROUTER_API_KEY` itu wajib** untuk fitur clip. Tanpa itu, `AISelector()`
+melempar `ValueError` saat pipeline dijalankan, jadi job clip berhenti dengan
+error — bukan fell back ke klip acak.
+
+Yang *boleh* fell back ke pemilihan acak adalah key yang **ada tapi gagal
+dipakai**: nama model salah, respons kosong, atau JSON tidak bisa dibaca.
+`select_clips()` menangkap error itu dan memakai `_fallback_selection()`, jadi
+clip tetap keluar albeit tanpa analisis AI.
 
 `GEMINI_API_KEY` yang ada di `.env.example` versi lama **tidak dipakai lagi**.
 

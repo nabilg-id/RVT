@@ -86,6 +86,27 @@ class TestAISelectorKeyHandling:
         with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
             selector_module.AISelector()
 
+    def test_the_message_tells_the_user_what_to_do(self, selector_module,
+                                                  monkeypatch):
+        """This string is what a non-developer sees in the GUI when Generate
+        fails. Naming the variable without saying where to put it, or how to
+        get one, leaves them stuck: the setting is named OPENROUTER_API_KEY and
+        has to go in a file called .env, neither of which is guessable from the
+        name alone. Every failure of the clip pipeline on a fresh install is
+        this one error, so it has to carry the whole remedy.
+        """
+        monkeypatch.setattr(selector_module, "OPENROUTER_API_KEY", "")
+
+        with pytest.raises(ValueError) as caught:
+            selector_module.AISelector()
+
+        message = str(caught.value)
+        assert ".env" in message, "the message does not say which file to edit"
+        assert "OPENROUTER_API_KEY" in message, "the variable is not named"
+        assert "openrouter.ai" in message.lower(), (
+            "the message does not say where to obtain a key"
+        )
+
     @pytest.fixture()
     def real_selector(self, selector_module, monkeypatch):
         """A genuine AISelector, so the real select_clips() logic is under test."""

@@ -1,59 +1,35 @@
 #!/usr/bin/env bash
-# Ridikc Video Toolkit - installer macOS / Linux
+# Ridikc Video Toolkit - installer macOS / Linux (double-clickable wrapper)
+#
+# This file used to be a full copy of setup-gui.sh, and it drifted: it kept the
+# old four-step flow and never learned about `pip install -e .`, so a mac user
+# who double-clicked it ended up with every dependency installed and no `rch`
+# and no `vclip` command at all - the exact failure the Windows installer was
+# fixed for. Two copies of one installer will always diverge; this delegates
+# instead, so there is only one to keep correct.
+#
+# Double-clicking a .command in Finder runs it with the working directory set
+# somewhere unhelpful, hence the explicit cd before handing over.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-echo "============================================"
-echo " Ridikc Video Toolkit - Setup"
-echo "============================================"
-echo
-
-PY="python3"
-command -v python3 >/dev/null 2>&1 || PY="python"
-
-if ! command -v "$PY" >/dev/null 2>&1; then
-  echo "[1/4] Python tidak ditemukan."
-  echo "  macOS : brew install python@3.12"
-  echo "  Linux : sudo apt install python3 python3-pip"
+if [ ! -f setup-gui.sh ]; then
+  echo "[GAGAL] setup-gui.sh tidak ditemukan di folder ini."
+  echo "        Pastikan file .command dan setup-gui.sh berada di folder yang sama."
+  read -r -p "Tekan Enter untuk menutup..."
   exit 1
 fi
 
-MAJOR="$("$PY" -c 'import sys; print(sys.version_info[0])')"
-if [ "$MAJOR" -lt 3 ]; then
-  echo "[GAGAL] Python 3.10+ diperlukan."
-  exit 1
-fi
-echo "[1/4] $("$PY" --version) - OK"
-echo
-
-echo "[2/4] Memasang dependency dasar + pytest..."
-"$PY" -m pip install --upgrade pip --quiet
-"$PY" -m pip install -r requirements-dev.txt
-echo
-
-echo "[3/4] Memasang dependensi clip (torch, moviepy, whisper, mediapipe)."
-echo "      Ini besar - mungkin perlu 15-30 menit dan ~3 GB disk."
-echo "      Tekan Ctrl+C untuk melewati dan hanya memakai mode ringan."
-"$PY" -m pip install -r requirements.txt || \
-  echo "[PERINGATAN] Dependensi clip gagal; pipeline clip tidak akan jalan."
-echo
-
-echo "[4/4] Membuat launcher..."
-if [ "$(uname)" = "Darwin" ]; then
-  TARGET="$HOME/Desktop/VCLIP-GUI.command"
-  mkdir -p "$HOME/Desktop"
-  cp launchers/VCLIP.command "$TARGET"
-  chmod +x "$TARGET" launchers/vclip.sh
-  echo "Launcher: $TARGET"
-  echo "Catatan: klik pertama kali akan minta konfirmasi Gatekeeper."
+# Keep the window open on failure, and on success when opened by double-click:
+# a terminal that closes instantly leaves the user with nothing to read.
+if bash setup-gui.sh; then
+  if [ -t 0 ]; then
+    read -r -p "Selesai. Tekan Enter untuk menutup..."
+  fi
 else
-  chmod +x launchers/vclip.sh
-  echo "Launcher: $(pwd)/launchers/vclip.sh"
+  status=$?
+  echo
+  echo "[GAGAL] Instalasi berhenti dengan kode $status."
+  read -r -p "Tekan Enter untuk menutup..."
+  exit "$status"
 fi
-echo
-
-echo "============================================"
-echo " Selesai. Jalankan launchers/vclip.sh"
-echo " GUI: http://127.0.0.1:8787"
-echo " CLI: $PY -m clipper.main"
-echo "============================================"
