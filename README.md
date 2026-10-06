@@ -97,6 +97,76 @@ Salin `clipper/.env.example` ke `.env` di root repo.
 
 ---
 
+## 🖥️ Penggunaan
+
+Dua cara pakai: **GUI web** (paling gampang) atau **CLI** (`rch`). Semua
+perintah punya bantuan detail lewat `--help`.
+
+### GUI web
+
+```bash
+rch web                 # atau python -m clipper.app
+rch web --port 9000     # ganti port (default 127.0.0.1:8787)
+```
+
+Browser terbuka di `http://127.0.0.1:8787` dengan dua halaman dalam satu
+proses: **Clipper** (`/`) dan **Downloader** (`/download`). Tema terang/gelap,
+progres live, dan riwayat job. Bisa juga lewat shortcut **RCH-GUI** /
+**VCLIP-GUI** di Desktop.
+
+### CLI interaktif (clip)
+
+```bash
+python -m clipper.main "https://www.youtube.com/watch?v=VIDEO_ID"
+```
+
+CLI menanyakan jumlah clip, durasi min/maks, dan gaya caption.
+
+### Perintah akuisisi (`rch`)
+
+| Perintah | Fungsi |
+| --- | --- |
+| `rch thumbnail URL [SIZE] [--zip]` | Unduh thumbnail satu video |
+| `rch video URL [--quality 1080p] [--mp3]` | Unduh satu video / audio |
+| `rch download URL [NAME] [OUT] [--zip]` | Unduh video + thumbnail sekaligus |
+| `rch channel URL [SIZE]` | Unduh semua video dari channel |
+| `rch channel-info URL [SIZE]` | Info channel tanpa mengunduh video |
+| `rch channel-full URL [SIZE]` | Video + thumbnail + metadata → 1 ZIP |
+| `rch channel-video URL` | Unduh video saja dari channel |
+| `rch list URL [--limit N]` | Tampilkan daftar ID video channel |
+| `rch info ID [ID ...] [--json] [--csv]` | Info video, ekspor JSON/CSV |
+| `rch playlist URL [--limit N] [--csv]` | Info playlist |
+| `rch web` / `gui` / `serve` | Jalankan GUI web lokal |
+
+Ukuran thumbnail (`SIZE`): `default`, `mqdefault`, `hqdefault`, `sddefault`,
+`maxresdefault`. Kualitas video (`--quality`): `360p`, `480p`, `720p`
+(default), `1080p`.
+
+**Contoh cepat:**
+
+```bash
+rch thumbnail https://youtu.be/ID_VIDEO maxresdefault
+rch video https://youtu.be/ID_VIDEO --quality 1080p
+rch video https://youtu.be/ID_VIDEO --mp3                # audio saja
+rch download https://youtu.be/ID_VIDEO --zip
+rch channel https://www.youtube.com/@namachannel
+rch channel-full https://www.youtube.com/@namachannel hqdefault
+rch channel-full https://www.youtube.com/@namachannel --resume   # lanjutkan
+```
+
+Flag lanjutan untuk perintah channel: `--resume` (lanjut dari checkpoint
+`.rch-checkpoint.json`), `--out <folder>`, `--quality <res>`, `--limit <n>`,
+`--after YYYYMMDD`, `--shorts`, `--subtitles`, `--concurrency <n>`.
+
+> Tanpa instalasi, ganti `rch` dengan `python -m rch`, contoh:
+> `python -m rch channel https://www.youtube.com/@namachannel`.
+
+> 📚 Detail lengkap (install per platform, opsi lanjutan, arsitektur) ada di
+> [`docs/PENGGUNAAN.md`](docs/PENGGUNAAN.md), [`docs/CLIPPER.md`](docs/CLIPPER.md),
+> dan [`docs/CARA_KERJA.md`](docs/CARA_KERJA.md).
+
+---
+
 ## 🧪 Testing
 
 ```bash
