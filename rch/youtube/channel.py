@@ -556,7 +556,8 @@ def channel_video(channel_url: str, options: Optional[Dict] = None, *,
 
     if retry_failed and not stopped:
         _retry_failed_items(results, meta_map, slug_counts, work_dir, quality,
-                            subtitles, sub_lang, downloader, sleeper, zip_stream, on_phase)
+                            subtitles, sub_lang, downloader, sleeper, zip_stream, on_phase,
+                            output_dir)
 
     zip_stream.finalize()
 
@@ -605,12 +606,20 @@ def _retry_failed_items(results: List[Dict], meta_map: Dict[str, Dict],
                         sleeper: Callable[[float], None],
                         zip_stream: _ZipCollector,
                         on_phase: Optional[Callable[[str, str], None]],
+                        output_dir: str,
                         key: str = "ok", unavailable_key: str = "skipped") -> None:
     """Second pass over failed, non-skipped items; flips them to success on recovery.
 
     ``key`` names the success flag on each item (``ok`` for the video-only
     mode, ``videoOk`` for the full mode) and ``unavailable_key`` names the flag
     that excludes an item from retrying.
+
+    A recovery also corrects the ledger and the checkpoint. The first pass wrote
+    ``download: failed`` the moment the video failed; if the retry then succeeds
+    but only the ``results`` entry is flipped, the report says success while the
+    board keeps showing ``failed`` forever - the tracker will not revisit an id
+    it has already recorded - and ``--resume`` downloads the video again because
+    the checkpoint never marked it complete.
     """
     failed = [r for r in results
               if not r.get(key) and not r.get(unavailable_key)]
@@ -630,6 +639,10 @@ def _retry_failed_items(results: List[Dict], meta_map: Dict[str, Dict],
                                     f"{folder_name}/{_VIDEO_ARCNAME}")
                 entry[key] = True
                 entry["error"] = None
+                _mark_completed(output_dir, video_id)
+                _track(video_id, "download", status="done",
+                       path=str(folder_path / _VIDEO_ARCNAME),
+                       title=info.get("title") or video_id)
         except Exception:
             pass
         sleeper(_RETRY_DELAY_SECONDS)
@@ -1044,7 +1057,8 @@ def channel_full(channel_url: str, options: Optional[Dict] = None, *,
     if retry_failed and include_video and not stopped:
         _retry_failed_items(results, meta_map, slug_counts, work_dir, quality,
                             subtitles, sub_lang, downloader, sleeper, zip_stream,
-                            on_phase, key="videoOk", unavailable_key="unavailable")
+                            on_phase, output_dir, key="videoOk",
+                            unavailable_key="unavailable")
 
     _write_manifest(work_dir, channel_url, source_url, results, meta_map,
                     slug_counts, size, include_video)

@@ -1945,6 +1945,104 @@ class TestChannelFullResumeAndEvents:
         assert seen[0]["label"] == "a1"
 
 
+class TestRetryCorrectsTheLedger:
+    """A retry that succeeds must overwrite the earlier ``failed`` verdict.
+
+    The first pass writes ``download: failed`` to the ledger the moment a video
+    fails. ``_retry_failed_items`` then re-downloads it and flips the item in the
+    ``results`` list - so the report says success - but never touches the ledger
+    or the checkpoint. The board therefore kept showing ``failed`` forever for a
+    video that did eventually download, and ``--resume`` would redo it because
+    the checkpoint never marked it complete. The tracker will not revisit an id
+    it has already recorded, so no later run repairs it.
+    """
+
+    @staticmethod
+    def _flaky():
+        class _Flaky:
+            def __init__(self):
+                self.calls = []
+
+            def __call__(self, url, options=None):
+                self.calls.append(url)
+                if len(self.calls) == 1:
+                    return {"status": False, "message": "HTTP Error 403"}
+                out_dir = Path(options["outputDir"])
+                out_dir.mkdir(parents=True, exist_ok=True)
+                path = out_dir / "video.mp4"
+                path.write_bytes(b"x" * 4)
+                return {"status": True, "result": {"path": str(path)}}
+
+        return _Flaky()
+
+    def test_ledger_is_flipped_to_done_after_retry(self, tmp_path, monkeypatch):
+        import rch.youtube.channel as channel_mod
+
+        seen = []
+        monkeypatch.setattr(channel_mod, "append_event",
+                            lambda *a, **k: seen.append((a, k)))
+
+        channel_video(
+            CHANNEL_URL,
+            _video_opts(tmp_path),
+            list_ids=_FakeIds(_video_ids("a1")),
+            metadata=_FakeMeta(batch={"a1": {"title": "A"}}),
+            download_video=self._flaky(),
+            sleep=_FakeSleep(),
+        )
+
+        verdicts = [fields for a, fields in seen if "download" in a]
+        assert verdicts, "no download verdict was written at all"
+        assert verdicts[-1]["status"] == "done", (
+            f"the ledger kept the failed verdict after a successful retry: "
+            f"{verdicts}"
+        )
+        assert verdicts[-1]["path"].endswith("video.mp4")
+
+    def test_checkpoint_marks_it_completed_after_retry(self, tmp_path,
+                                                       monkeypatch):
+        import rch.youtube.channel as channel_mod
+
+        seen = []
+        monkeypatch.setattr(channel_mod, "mark_completed",
+                            lambda out, vid: seen.append((out, vid)))
+
+        channel_video(
+            CHANNEL_URL,
+            _video_opts(tmp_path),
+            list_ids=_FakeIds(_video_ids("a1")),
+            metadata=_FakeMeta(batch={"a1": {"title": "A"}}),
+            download_video=self._flaky(),
+            sleep=_FakeSleep(),
+        )
+
+        assert ("a1") in [vid for out, vid in seen], (
+            "a video recovered by retry was never marked complete in the "
+            "checkpoint, so --resume will download it again"
+        )
+
+    def test_a_video_that_still_fails_stays_failed(self, tmp_path, monkeypatch):
+        import rch.youtube.channel as channel_mod
+
+        seen = []
+        monkeypatch.setattr(channel_mod, "append_event",
+                            lambda *a, **k: seen.append((a, k)))
+
+        channel_video(
+            CHANNEL_URL,
+            _video_opts(tmp_path),
+            list_ids=_FakeIds(_video_ids("a1")),
+            metadata=_FakeMeta(batch={"a1": {"title": "A"}}),
+            download_video=_FakeDownload(failing=["a1"]),
+            sleep=_FakeSleep(),
+        )
+
+        verdicts = [fields for a, fields in seen if "download" in a]
+        assert verdicts[-1]["status"] == "failed", (
+            "a video that never succeeded must not be marked done"
+        )
+
+
 class TestChannelInfoLedgerHonesty:
     """A metadata-only run must not claim the video was downloaded.
 
