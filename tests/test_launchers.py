@@ -151,6 +151,85 @@ class TestSetupInstallsTheProjectNotJustItsDependencies:
         )
 
 
+class TestReadmeServesANonDeveloperFirst:
+    """The README is what a new user reads first, and it has to work for them.
+
+    It was written the other way round: a Quick Start whose second line used a
+    command the first line had not installed, ``rch``, described as if it were
+    the normal path while the installer was the real one. Someone who does not
+    know what pip is could follow it exactly and still get nothing that runs.
+
+    These pin the shape rather than the wording: a plain-language path first,
+    technical detail behind a marker, and no command promised that the install
+    does not produce.
+    """
+
+    def _readme(self) -> str:
+        return (REPO / "README.md").read_text(encoding="utf-8")
+
+    #: The headings, not the phrases. "Detail teknis" also appears in the
+    #: Features <summary>, which sits above the plain-language start and made
+    #: an earlier version of this slice compare the wrong two offsets.
+    START = "Mulai dari sini (pengguna baru)"
+    TECH = "Detail teknis (untuk developer)"
+
+    def _plain_section(self) -> str:
+        body = self._readme()
+        return body[body.find(self.START): body.find(self.TECH)]
+
+    def test_it_opens_with_a_path_for_someone_who_is_not_a_developer(self):
+        body = self._readme()
+
+        assert self.START in body, "there is no plain-language starting point"
+        assert self.TECH in body, "the developer section marker is missing"
+        assert body.find(self.START) < body.find(self.TECH), (
+            "technical detail appears before the plain-language start"
+        )
+
+    def test_the_plain_start_names_the_installer_and_the_shortcut(self):
+        """Two concrete things a non-developer can act on."""
+        section = self._plain_section()
+
+        assert "setup-gui.bat" in section, "the installer is never named"
+        assert "VCLIP-GUI" in section, "the Desktop shortcut is never named"
+
+    def test_no_quick_start_uses_a_command_the_install_does_not_create(self):
+        """`rch` is only real after `pip install -e .`.
+
+        Before that fix the Quick Start installed requirements.txt alone and
+        then told the reader to run `rch web`, which could not exist. The
+        plain-language path has to start the app by something that works from
+        a plain double-click.
+        """
+        section = self._plain_section()
+
+        assert "VCLIP-GUI" in section
+        assert "pip install" not in section, (
+            "the plain-language start asks a non-developer to run pip"
+        )
+
+    def test_the_install_section_states_both_pip_commands(self):
+        body = self._readme()
+
+        assert "pip install -r requirements.txt" in body
+        assert "pip install -e ." in body
+
+    def test_it_does_not_claim_a_coverage_number_it_has_not_measured(self):
+        """It said '1369 test, coverage 99%' long after the suite grew past
+        2000 and settled near 97. A stale number reads as a promise."""
+        body = self._readme()
+
+        assert "1369" not in body, "the test count in the README is stale"
+        assert "99%" not in body, "the coverage claim in the README is stale"
+
+    def test_the_env_is_documented_as_optional(self):
+        """It was listed as mandatory, which would have had a new user hunting
+        for an API key before the download features worked without one."""
+        body = self._readme()
+
+        assert "**Wajib**" not in body, "the README still demands a key"
+
+
 class TestTheRepositoryPathIsDiscoverable:
     def test_the_launcher_has_no_hardcoded_machine_path(self):
         """A path baked into the repo would work on this machine and nowhere

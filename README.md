@@ -15,148 +15,97 @@ _Tempel satu URL, dapatkan clip pendek siap upload — dibangun untuk penggunaan
 
 ---
 
-## ✨ Features
+## ✨ Apa yang Bisa Dilakukan
 
-- 🎬 **Generator Clip Viral** — pilih momen terbaik otomatis lewat AI (OpenRouter), transkripsi Whisper, face tracking, caption kata-per-kata, dan transisi hook → main.
-- 🌐 **GUI Web Lokal** — buka `127.0.0.1:8787` di browser, tidak perlu terminal. Dua halaman dalam satu proses: **Clipper** (`/`) dan **Downloader** (`/download`), berbagi satu registry job. Preview metadata + thumbnail sebelum generate, progres live, riwayat job.
-- 🖼️ **Akuisisi dari RCH** — metadata (judul, deskripsi, durasi, tanggal) dan thumbnail diambil sebelum clip dibuat.
-- 🎨 **7 gaya caption** — Clean White, Viral Yellow/Red/Green, Neon Cyan/Pink, Bold Black BG.
-- 📋 **Riwayat** — setiap job clip tercatat di `temp/clip-history.jsonl`.
+- 🎬 **Buat clip pendek dari video YouTube** — tempel URL, klik Generate, jadi
+  clip siap upload. AI memilih momen terbaiknya sendiri.
+- 📥 **Unduh video & channel YouTube** — satu video, satu channel, atau
+  thumbnail + deskripsi + metadata sekaligus.
+- 🌐 **Berjalan di browser** — tidak perlu terminal. Dua halaman: **Clipper**
+  (buat clip) dan **Downloader** (unduh video).
+- 🎨 **7 gaya caption** — Clean White, Viral Yellow/Red/Green, Neon Cyan/Pink,
+  Bold Black BG.
+- 📋 **Riwayat** — semua pekerjaan yang pernah kamu jalankan tersimpan.
 
----
+<details>
+<summary>Detail teknis fitur (untuk developer)</summary>
 
-## 🚀 Quick Start
+- 🎬 **Generator Clip Viral** — pemilihan momen AI (OpenRouter), transkripsi
+  Whisper, face tracking, caption kata-per-kata, transisi hook → main.
+- 🌐 **GUI Web Lokal** — satu proses Flask di `127.0.0.1:8787` dengan dua
+  halaman (`/` dan `/download`) yang berbagi satu registry job. Preview
+  metadata + thumbnail sebelum generate, progres live, riwayat job.
+- 🖼️ **Akuisisi dari RCH** — metadata (judul, deskripsi, durasi, tanggal) dan
+  thumbnail diambil sebelum clip dibuat; ledger bersama `video-tracker.jsonl`
+  menyatukan status unduhan & clip.
+- 📋 **Riwayat clip** — tiap job tercatat di `temp/clip-history.jsonl`.
 
-```bash
-pip install -r requirements.txt
-python -m clipper.app        # GUI web di http://127.0.0.1:8787
-rch web                      # sama persis, lewat CLI
-```
-
-Tanpa `pip install` penuh, gunakan `requirements-dev.txt` (mode ringan: GUI
-jalan, pipeline clip tidak).
-
-### CLI interaktif
-
-```bash
-python -m clipper.main "https://www.youtube.com/watch?v=VIDEO_ID"
-```
-
----
-
-## 📦 Installation
-
-### Untuk tim (installer)
-
-| Platform | Perintah |
-| --- | --- |
-| Windows | `setup-gui.bat` |
-| macOS / Linux | `./setup-gui.sh` |
-
-Installer memasang Python bila perlu, dependency dasar, dependensi clip
-(torch, moviepy, Whisper, mediapipe), lalu memasang project itu sendiri
-(`pip install -e .`) supaya perintah `rch` / `vclip` tersedia**, terakhir
-membuat shortcut desktop.
-
-> ⚠️ **Instalasi penuh itu besar.** `torch` + `faster-whisper` + model Whisper
-> menambah sekitar 3 GB dan bisa memakan 15–30 menit.
-
-### Manual
-
-```bash
-python -m pip install -r requirements.txt
-python -m pip install -e .
-```
-
-> **Kedua perintah wajib.** Yang pertama memasang dependency (flask, yt-dlp,
-> moviepy, torch…), yang kedua memasang **project-nya sendiri** sehingga
-> perintah `rch` dan `vclip` benar-benar ada. Tanpa `pip install -e .`, semua
-> dependency sudah terpasang tetapi `rch` **tidak dikenal** — karena kedua
-> perintah itu datang dari `[project.scripts]` di `pyproject.toml`, bukan dari
-> `requirements.txt`.
-
-Setelah ter-install, `rch` dan `vclip` bisa dipanggil **dari folder mana saja**:
-
-```bash
-rch --help          # CLI akuisisi
-vclip               # GUI
-```
-
-### Tanpa install sama sekali
-
-Bisa juga jalan langsung dari folder repo, selama kamu berada di dalamnya:
-
-```bash
-python -m rch --help
-python -m clipper.app
-```
-
-Perbedaannya: `rch` (tanpa `python -m`) tidak akan ada, dan shortcut
-`RCH-CLI.bat` di Desktop tidak bisa dipakai.
-
-### Syarat penting
-
-- **Python 3.10+**
-- **moviepy 1.x** — `moviepy.editor` dihapus di moviepy 2.x, dan pipeline clip
-  masih memakainya. Jangan naikkan batas `<2.0` tanpa memindahkan API.
-- **`OPENROUTER_API_KEY`** wajib di `.env`; tanpa itu `AISelector` gagal saat
-  pemilihan momen.
+</details>
 
 ---
 
-## ⚙️ Konfigurasi
+## 🚀 Mulai dari sini (pengguna baru)
 
-Opsional. Salin `clipper/.env.example` ke `.env` — bisa di root repo **atau**
-di dalam folder `clipper/`, keduanya dibaca.
+Kamu **tidak perlu** tahu apa itu Python, pip, atau terminal. Cukup 4 langkah.
 
-Tanpa `.env`, aplikasi tetap jalan: pipeline clip hanya akan memakai klip acak
-dan **tidak** memanggil AI (OpenRouter), sedangkan semua fitur unduh YouTube
-(`rch …`) tetap berfungsi penuh tanpa file ini.
+### 1. Pastikan Python ada di komputer
 
-| Key | Default | Keterangan |
-| --- | --- | --- |
-| `OPENROUTER_API_KEY` | — | Untuk **pemilihan momen AI** di pipeline clip. Kosong = pakai klip acak |
-| `OPENROUTER_MODEL` | `openrouter/free` | Router ke model gratis; ganti bila perlu |
-| `WHISPER_MODEL` | `medium` | tiny / base / small / medium / large-v2 |
-| `WHISPER_LANGUAGE` | auto | `id` / `en`, kosongkan untuk deteksi otomatis |
-| `OUTPUT_DIR` | `./clips` | Folder hasil clip |
-| `TEMP_DIR` | `./temp` | Folder kerja + riwayat |
-| `COOKIES_FILE` | `./cookies.txt` | Cookie YouTube bila perlu |
-| `YOUTUBE_COOKIES_BROWSER` | — | `chrome` / `firefox` / `edge` |
-| `YOUTUBE_USER_AGENT` | — | UA kustom bila YouTube memblokir |
-| `RCH_HOST` / `RCH_PORT` | `127.0.0.1` / `8787` | Alamat GUI web |
+Buka **Command Prompt** (tekan `Win` → ketik `cmd` → Enter), lalu ketik:
 
-> `GEMINI_API_KEY` di `.env.example` adalah warisan dan tidak dipakai kode
-> mana pun. Yang aktif adalah `OPENROUTER_API_KEY`.
+```
+py -3 --version
+```
+
+Kalau muncul `Python 3.10` atau lebih baru → **lanjut ke langkah 2**.
+Kalau muncul error → pasang dulu dari <https://www.python.org/downloads/>
+(pilih versi 3.12), **centang "Add Python to PATH"** saat memasang, lalu
+*buka ulang* Command Prompt dan coba lagi.
+
+### 2. Jalankan installer
+
+Di folder proyek ini, **klik dua kali** `setup-gui.bat`.
+
+ Akan muncul jendela hitam yang bekerja sendiri. Tunggu sampai selesai.
+
+> ⏳ **Ini lama.** Installer mengunduh library besar (torch, Whisper) sekitar
+> **3 GB**, bisa **15–30 menit**. Biarkan saja — jangan tutup jendelanya.
+>
+> 💡 **Mau coba cepat dulu?** Tekan `Ctrl+C` saat installer sedang mengunduh
+> library besar. Sisa langkah tetap berjalan dan kamu tetap bisa memakai fitur
+> **unduh YouTube** (Clipper AI-nya yang tidak aktif).
+
+### 3. Buka aplikasinya
+
+Di **Desktop** kamu sekarang ada **VCLIP-GUI**. Klik dua kali.
+
+Browser akan terbuka sendiri ke `http://127.0.0.1:8787`.
+
+### 4. Pakai
+
+- **Halaman `/`** → tempel URL YouTube, klik **Generate** → clip jadi.
+- **Halaman `/download`** → tempel URL, klik **Unduh** → video tersimpan.
+
+Selesai. 🎉
+
+> **Kalau halaman tidak terbuka**, klik kanan `VCLIP-GUI` → **Run as
+> administrator**. Pesan errornya akan muncul di jendela itu — foto dan kirim
+> ke tim R&D.
 
 ---
 
-## 🖥️ Penggunaan
+## 🖥️ Penggunaan CLI (opsional, untuk yang terbiasa)
 
-Dua cara pakai: **GUI web** (paling gampang) atau **CLI** (`rch`). Semua
-perintah punya bantuan detail lewat `--help`.
-
-### GUI web
+Kalau lebih suka mengetik perintah daripada klik. Aktif **Command Prompt** dulu
+tekan `Win` → ketik `cmd` → Enter.
 
 ```bash
-rch web                 # atau python -m clipper.app
-rch web --port 9000     # ganti port (default 127.0.0.1:8787)
+rch --help              # lihat semua perintah
+rch video URL --mp3     # unduh audio saja
+rch channel-full URL    # unduh semua video satu channel
+rch web                 # jalankan GUI
 ```
 
-Browser terbuka di `http://127.0.0.1:8787` dengan dua halaman dalam satu
-proses: **Clipper** (`/`) dan **Downloader** (`/download`). Tema terang/gelap,
-progres live, dan riwayat job. Bisa juga lewat shortcut **RCH-GUI** /
-**VCLIP-GUI** di Desktop.
-
-### CLI interaktif (clip)
-
-```bash
-python -m clipper.main "https://www.youtube.com/watch?v=VIDEO_ID"
-```
-
-CLI menanyakan jumlah clip, durasi min/maks, dan gaya caption.
-
-### Perintah akuisisi (`rch`)
+Semua perintah lengkap:
 
 | Perintah | Fungsi |
 | --- | --- |
@@ -172,11 +121,7 @@ CLI menanyakan jumlah clip, durasi min/maks, dan gaya caption.
 | `rch playlist URL [--limit N] [--csv]` | Info playlist |
 | `rch web` / `gui` / `serve` | Jalankan GUI web lokal |
 
-Ukuran thumbnail (`SIZE`): `default`, `mqdefault`, `hqdefault`, `sddefault`,
-`maxresdefault`. Kualitas video (`--quality`): `360p`, `480p`, `720p`
-(default), `1080p`.
-
-**Contoh cepat:**
+Contoh:
 
 ```bash
 rch thumbnail https://youtu.be/ID_VIDEO maxresdefault
@@ -184,25 +129,82 @@ rch video https://youtu.be/ID_VIDEO --quality 1080p
 rch video https://youtu.be/ID_VIDEO --mp3                # audio saja
 rch download https://youtu.be/ID_VIDEO --zip
 rch channel https://www.youtube.com/@namachannel
-rch channel-full https://www.youtube.com/@namachannel hqdefault
 rch channel-full https://www.youtube.com/@namachannel --resume   # lanjutkan
 ```
 
-Flag lanjutan untuk perintah channel: `--resume` (lanjut dari checkpoint
-`.rch-checkpoint.json`), `--out <folder>`, `--quality <res>`, `--limit <n>`,
-`--after YYYYMMDD`, `--shorts`, `--subtitles`, `--concurrency <n>`.
+Ukuran thumbnail (`SIZE`): `default`, `mqdefault`, `hqdefault`, `sddefault`,
+`maxresdefault`. Kualitas video (`--quality`): `360p`, `480p`, `720p`
+(default), `1080p`.
 
-> Output default masuk ke folder **Downloads** sistem di
-> `Downloads/Ridikc Video Toolkit/` (Windows, macOS, dan Linux alike). Ubah
-> dengan `--out`, atau variabel `RCH_DOWNLOADS_DIR`.
-
-> 📚 Detail lengkap (install per platform, opsi lanjutan, arsitektur) ada di
-> [`docs/PENGGUNAAN.md`](docs/PENGGUNAAN.md), [`docs/CLIPPER.md`](docs/CLIPPER.md),
-> dan [`docs/CARA_KERJA.md`](docs/CARA_KERJA.md).
+Semua hasil unduhan tersimpan otomatis ke folder **Downloads** sistem →
+`Downloads/Ridikc Video Toolkit/`. Ubah dengan `--out <folder>` atau variabel
+`RCH_DOWNLOADS_DIR`.
 
 ---
 
-## 🧪 Testing
+## 👨‍💻 Detail teknis (untuk developer)
+
+### ⚙️ Installation
+
+<details>
+<summary>Instalasi manual (Linux/macOS/Windows)</summary>
+
+```bash
+python -m pip install -r requirements.txt
+python -m pip install -e .
+```
+
+> **Kedua perintah wajib.** Yang pertama memasang dependency (flask, yt-dlp,
+> moviepy, torch…), yang kedua memasang **project-nya sendiri** sehingga
+> perintah `rch` dan `vclip` benar-benar ada. Tanpa `pip install -e .`, semua
+> dependency sudah terpasang tetapi `rch` **tidak dikenal** — karena kedua
+> perintah itu datang dari `[project.scripts]` di `pyproject.toml`, bukan dari
+> `requirements.txt`.
+
+</details>
+
+<details>
+<summary>Jalankan tanpa install</summary>
+
+Bisa jalan langsung dari folder repo, selama kamu berada di dalamnya:
+
+```bash
+python -m rch --help
+python -m clipper.app
+```
+
+`rch` (tanpa `python -m`) tidak akan ada di mode ini.
+
+</details>
+
+### Konfigurasi (`.env`)
+
+Opsional. Salin `clipper/.env.example` ke `.env` — di root repo **atau** di
+`clipper/`, keduanya dibaca.
+
+Tanpa `.env`, aplikasi tetap jalan: pipeline clip hanya pakai klip acak dan
+**tidak** memanggil AI (OpenRouter). Fitur unduh YouTube tetap berfungsi penuh.
+
+| Key | Default | Keterangan |
+| --- | --- | --- |
+| `OPENROUTER_API_KEY` | — | Untuk **pemilihan momen AI**. Kosong = klip acak |
+| `OPENROUTER_MODEL` | `openrouter/free` | Router ke model gratis |
+| `WHISPER_MODEL` | `medium` | tiny / base / small / medium / large-v2 |
+| `WHISPER_LANGUAGE` | auto | `id` / `en`, kosongkan untuk auto |
+| `OUTPUT_DIR` | `Downloads/Ridikc Video Toolkit/clips` | Folder hasil clip |
+| `TEMP_DIR` | `./temp` | Folder kerja + riwayat |
+| `COOKIES_FILE` | `./cookies.txt` | Cookie YouTube bila perlu |
+| `YOUTUBE_COOKIES_BROWSER` | — | `chrome` / `firefox` / `edge` |
+| `YOUTUBE_USER_AGENT` | — | UA kustom bila YouTube memblokir |
+| `RCH_HOST` / `RCH_PORT` | `127.0.0.1` / `8787` | Alamat GUI web |
+| `RCH_DOWNLOADS_DIR` | — | Override folder Downloads |
+
+> `GEMINI_API_KEY` di `.env.example` adalah warisan dan tidak dipakai kode
+> mana pun. Yang aktif adalah `OPENROUTER_API_KEY`.
+
+---
+
+### Testing
 
 ```bash
 python -m pip install -r requirements-dev.txt
@@ -211,13 +213,16 @@ python -m pytest --cov --cov-report=term-missing        # + coverage
 python -m pytest --cov --cov-fail-under=97              # gerbang CI
 ```
 
-1369 test, coverage 99%. Test pipeline clip otomatis **di-skip** bila
+2039 test, coverage 97,25%. Test pipeline clip otomatis **di-skip** bila
 dependensi berat belum terpasang (`pytest.importorskip`), jadi suite inti tetap
 hijau di mesin ringan maupun di CI.
 
+> Catatan: coverage meng-exclude `clipper/services/*` — pipeline media berat
+> (torch, Whisper, mediapipe) tidak dipasang di CI.
+
 ---
 
-## 📁 Struktur
+### Struktur
 
 ```
 rch/                       # pustaka akuisisi (metadata, thumbnail, config, riwayat)
@@ -235,7 +240,7 @@ tests/                     # test RCH + test lapisan web clipper
 
 ---
 
-## 🛡️ Security
+### Security
 
 - Guard **cross-origin** pada semua endpoint tulis — GUI tidak punya
   autentikasi, jadi `Origin` harus cocok dengan `Host`.
@@ -244,6 +249,12 @@ tests/                     # test RCH + test lapisan web clipper
 - Ekspor CSV dari RCH memproteksi formula spreadsheet.
 
 ---
+
+### 📄 Dokumentasi lain
+
+> 📚 Detail lengkap ada di [`docs/PENGGUNAAN.md`](docs/PENGGUNAAN.md),
+> [`docs/CLIPPER.md`](docs/CLIPPER.md), dan
+> [`docs/CARA_KERJA.md`](docs/CARA_KERJA.md).
 
 ## ⚠️ Disclaimer
 
