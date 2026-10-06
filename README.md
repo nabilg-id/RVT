@@ -9,7 +9,7 @@ Dibangun untuk penggunaan internal R&D Ridikc.
 
 [![version](https://img.shields.io/badge/version-2.2.1-61afef.svg?style=flat-square)](pyproject.toml)
 [![python](https://img.shields.io/badge/python-3.10%2B-61afef.svg?style=flat-square)](https://www.python.org)
-[![tests](https://img.shields.io/badge/tests-2060%20passed-3fb950.svg?style=flat-square)](#-testing)
+[![tests](https://img.shields.io/badge/tests-2063%20passed-3fb950.svg?style=flat-square)](#-testing)
 [![coverage](https://img.shields.io/badge/coverage-97%25-3fb950.svg?style=flat-square)](#-testing)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 

@@ -147,6 +147,13 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .hint { margin: 10px 0 0; font-size: 12px; color: var(--muted); word-break: break-all; }
 .hint code { background: var(--panel-2); padding: 2px 5px; border-radius: 4px; }
 
+/* The user-agent rule for [hidden] is only display:none with low precedence, so
+   any author rule that sets display defeats it. .preview is display:flex by
+   design, which meant the panel rendered on page load with an <img> that has no
+   src yet - a broken-image icon in the corner of the form. Restored here so the
+   attribute behaves as written. */
+[hidden] { display: none !important; }
+
 .preview {
   display: flex;
   gap: 12px;

@@ -13,11 +13,14 @@ Both pages are reachable from either one, so a user never has to know a URL.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
 
 from clipper import app as A
+
+ROOT = Path(A.__file__).resolve().parents[1]
 
 HOST = {"Host": "127.0.0.1:8787"}
 
@@ -120,6 +123,54 @@ class TestTheRunTableAsksForTheRightPath:
                       "/api/channel-full", "/api/info", "/api/download",
                       "/api/playlist"):
             assert route in _js("download.js")
+
+
+class TestTheHiddenAttributeActuallyHides:
+    """`hidden` in the markup is not the same as hidden on screen.
+
+    The preview panel carries ``hidden`` so it stays out of the way until Cek
+    Info fills it in, but the stylesheet sets ``.preview { display: flex }``.
+    An author rule beats the user-agent rule that implements ``hidden``, so the
+    panel was rendered anyway - with an ``<img>`` that has no ``src`` yet, which
+    the browser draws as a broken-image icon next to its alt text. The first
+    thing a new user saw was an error where nothing was wrong.
+
+    Checked as a CSS property rather than by screenshotting: this is exactly the
+    kind of defect that only appears once the cascade is applied.
+    """
+
+    def _css(self) -> str:
+        return (ROOT / "clipper" / "static" / "style.css").read_text(encoding="utf-8")
+
+    def test_no_rule_undoes_the_hidden_attribute(self):
+        css = self._css()
+
+        # A single author-level [hidden] rule restores the behaviour for every
+        # element at once. That is better than patching each selector, because a
+        # new panel added later inherits the fix instead of needing to remember
+        # it.
+        assert re.search(
+            r"\[hidden\]\s*\{[^}]*display:\s*none", css
+        ), "the stylesheet never restores [hidden], so any display rule on a hidden element wins"
+
+    def test_the_rule_cannot_be_outranked(self):
+        """``display: flex`` on the panel is author-level too, so without
+        ``!important`` the two rules are decided by source order rather than by
+        intent, and the panel comes back."""
+        css = self._css()
+
+        match = re.search(r"\[hidden\]\s*\{[^}]*\}", css)
+        assert match, "no [hidden] rule found"
+        assert "!important" in match.group(0), (
+            "the [hidden] rule can be defeated by the panel's own display: flex"
+        )
+
+    def test_the_panel_is_still_flex_when_it_is_shown(self):
+        """Guards the opposite failure: hiding must not be achieved by removing
+        the layout, or the preview would arrive unstyled once Cek Info runs."""
+        css = self._css()
+
+        assert re.search(r"\.preview\s*\{[^}]*display:\s*flex", css)
 
 
 class TestNavigation:
