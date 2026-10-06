@@ -54,7 +54,9 @@ python -m clipper.main "https://www.youtube.com/watch?v=VIDEO_ID"
 | macOS / Linux | `./setup-gui.sh` |
 
 Installer memasang Python bila perlu, dependency dasar, dependensi clip
-(torch, moviepy, Whisper, mediapipe), lalu membuat shortcut desktop.
+(torch, moviepy, Whisper, mediapipe), lalu memasang project itu sendiri
+(`pip install -e .`) supaya perintah `rch` / `vclip` tersedia**, terakhir
+membuat shortcut desktop.
 
 > ⚠️ **Instalasi penuh itu besar.** `torch` + `faster-whisper` + model Whisper
 > menambah sekitar 3 GB dan bisa memakan 15–30 menit.
@@ -63,7 +65,34 @@ Installer memasang Python bila perlu, dependency dasar, dependensi clip
 
 ```bash
 python -m pip install -r requirements.txt
+python -m pip install -e .
 ```
+
+> **Kedua perintah wajib.** Yang pertama memasang dependency (flask, yt-dlp,
+> moviepy, torch…), yang kedua memasang **project-nya sendiri** sehingga
+> perintah `rch` dan `vclip` benar-benar ada. Tanpa `pip install -e .`, semua
+> dependency sudah terpasang tetapi `rch` **tidak dikenal** — karena kedua
+> perintah itu datang dari `[project.scripts]` di `pyproject.toml`, bukan dari
+> `requirements.txt`.
+
+Setelah ter-install, `rch` dan `vclip` bisa dipanggil **dari folder mana saja**:
+
+```bash
+rch --help          # CLI akuisisi
+vclip               # GUI
+```
+
+### Tanpa install sama sekali
+
+Bisa juga jalan langsung dari folder repo, selama kamu berada di dalamnya:
+
+```bash
+python -m rch --help
+python -m clipper.app
+```
+
+Perbedaannya: `rch` (tanpa `python -m`) tidak akan ada, dan shortcut
+`RCH-CLI.bat` di Desktop tidak bisa dipakai.
 
 ### Syarat penting
 
@@ -77,11 +106,16 @@ python -m pip install -r requirements.txt
 
 ## ⚙️ Konfigurasi
 
-Salin `clipper/.env.example` ke `.env` di root repo.
+Opsional. Salin `clipper/.env.example` ke `.env` — bisa di root repo **atau**
+di dalam folder `clipper/`, keduanya dibaca.
+
+Tanpa `.env`, aplikasi tetap jalan: pipeline clip hanya akan memakai klip acak
+dan **tidak** memanggil AI (OpenRouter), sedangkan semua fitur unduh YouTube
+(`rch …`) tetap berfungsi penuh tanpa file ini.
 
 | Key | Default | Keterangan |
 | --- | --- | --- |
-| `OPENROUTER_API_KEY` | — | **Wajib** untuk pemilihan momen AI |
+| `OPENROUTER_API_KEY` | — | Untuk **pemilihan momen AI** di pipeline clip. Kosong = pakai klip acak |
 | `OPENROUTER_MODEL` | `openrouter/free` | Router ke model gratis; ganti bila perlu |
 | `WHISPER_MODEL` | `medium` | tiny / base / small / medium / large-v2 |
 | `WHISPER_LANGUAGE` | auto | `id` / `en`, kosongkan untuk deteksi otomatis |
@@ -158,8 +192,9 @@ Flag lanjutan untuk perintah channel: `--resume` (lanjut dari checkpoint
 `.rch-checkpoint.json`), `--out <folder>`, `--quality <res>`, `--limit <n>`,
 `--after YYYYMMDD`, `--shorts`, `--subtitles`, `--concurrency <n>`.
 
-> Tanpa instalasi, ganti `rch` dengan `python -m rch`, contoh:
-> `python -m rch channel https://www.youtube.com/@namachannel`.
+> Output default masuk ke folder **Downloads** sistem di
+> `Downloads/Ridikc Video Toolkit/` (Windows, macOS, dan Linux alike). Ubah
+> dengan `--out`, atau variabel `RCH_DOWNLOADS_DIR`.
 
 > 📚 Detail lengkap (install per platform, opsi lanjutan, arsitektur) ada di
 > [`docs/PENGGUNAAN.md`](docs/PENGGUNAAN.md), [`docs/CLIPPER.md`](docs/CLIPPER.md),

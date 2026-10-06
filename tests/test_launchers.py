@@ -99,6 +99,58 @@ class TestSetupWritesALauncherThatWorks:
         assert "del /f /q" in body.lower() or "del /q" in body.lower()
 
 
+class TestSetupInstallsTheProjectNotJustItsDependencies:
+    """The installer has to install the project itself.
+
+    ``requirements.txt`` installs dependencies only. The ``rch`` and ``vclip``
+    commands come from ``[project.scripts]`` in pyproject.toml, so without
+    ``pip install -e .`` a machine can have every dependency present and still
+    not have ``rch``. The installer's own Desktop shortcut then looks for an
+    ``rch.exe`` that was never created, and the README's entire usage section is
+    written against a command that does not exist. Nothing about the happy path
+    of the suite would catch it, because the tests import the packages rather
+    than invoking the console scripts.
+    """
+
+    @pytest.mark.parametrize("script", ["setup-gui.bat", "setup-gui.sh"])
+    def test_it_installs_the_project(self, script):
+        body = (REPO / script).read_text(encoding="utf-8")
+
+        assert "pip install -e ." in body, (
+            f"{script} never installs the project, so rch/vclip are never "
+            f"created"
+        )
+
+    def test_the_project_install_happens_before_the_launchers_are_written(self):
+        """Order matters: the CLI shortcut calls rch.exe, so writing it first
+        would produce a shortcut that fails on first click.
+
+        Measured against the step markers rather than the file names, because
+        ``RCH-CLI.bat`` is named in an explanatory comment well before it is
+        actually written - matching the name alone would compare against the
+        comment and prove nothing.
+        """
+        body = (REPO / "setup-gui.bat").read_text(encoding="utf-8")
+
+        install = body.find("pip install -e .")
+        launcher_step = body.find("[5/5]")
+
+        assert install != -1, "the project is never installed"
+        assert launcher_step != -1, "the launcher step marker is missing"
+        assert install < launcher_step, (
+            "the Desktop shortcut is written before rch.exe exists"
+        )
+
+    @pytest.mark.parametrize("script", ["setup-gui.bat", "setup-gui.sh"])
+    def test_a_failed_project_install_is_reported_not_swallowed(self, script):
+        body = (REPO / script).read_text(encoding="utf-8")
+
+        tail = body.split("pip install -e .", 1)[1][:400]
+        assert "PERINGATAN" in tail or "warning" in tail.lower(), (
+            f"{script} can lose rch/vclip silently"
+        )
+
+
 class TestTheRepositoryPathIsDiscoverable:
     def test_the_launcher_has_no_hardcoded_machine_path(self):
         """A path baked into the repo would work on this machine and nowhere
