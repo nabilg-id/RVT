@@ -125,6 +125,77 @@ class TestTheRunTableAsksForTheRightPath:
             assert route in _js("download.js")
 
 
+class TestBothPagesUseTheSameIndonesianHeadings:
+    """Where the two pages share a panel, they must share its name.
+
+    The downloader called its progress panel 'Progress' while the clipper called
+    it 'Progres'. 'Progress' is not Indonesian at all, so switching tabs swapped
+    a correct spelling for a broken one on the same control.
+
+    Only the genuinely shared panels are compared: the clipper's 'Sumber' and
+    'Pengaturan Clip' have no counterpart on the downloader, which has 'Input'
+    and 'Status Video' instead, and those are legitimate differences.
+    """
+
+    SHARED = ("Progres", "Riwayat")
+
+    @pytest.mark.parametrize("panel", SHARED)
+    def test_both_pages_name_it_the_same(self, panel, client):
+        root = client.get("/", headers=HOST).get_data(as_text=True)
+        download = client.get("/download", headers=HOST).get_data(as_text=True)
+
+        assert f"<h2>{panel}</h2>" in root, f"clipper tidak punya panel {panel!r}"
+        assert f"<h2>{panel}</h2>" in download, (
+            f"downloader tidak memakai panel {panel!r} yang sama"
+        )
+
+    def test_no_english_heading_survives(self, client):
+        download = client.get("/download", headers=HOST).get_data(as_text=True)
+
+        assert "<h2>Progress</h2>" not in download, (
+            "Progress is not Indonesian; use Progres"
+        )
+
+
+class TestBothPagesShareOneThemePreference:
+    """The two pages are one application behind one tab bar, so the theme is one
+    setting, not two.
+
+    They each stored it under their own key - ``vclip-theme`` on the clipper and
+    ``rch-theme`` on the downloader. Picking the light theme on one page and then
+    clicking the other tab silently reverted it, because the second page looked
+    up a key nobody had ever written. Nothing errored; the preference just
+    stopped existing across a tab.
+    """
+
+    @staticmethod
+    def _keys(script: str) -> set:
+        text = (ROOT / "clipper" / "static" / script).read_text(encoding="utf-8")
+        return set(re.findall(r'localStorage\.\w+\("([^"]+)"', text)) | set(
+            re.findall(r'localStorage\.\w+\(\'([^\']+)\'', text)
+        )
+
+    @pytest.mark.parametrize("script", ["app.js", "download.js"])
+    def test_neither_page_invents_its_own_theme_key(self, script):
+        for key in self._keys(script):
+            assert key == "rvt-theme", (
+                f"{script} stores the theme under {key!r}; both pages must share "
+                f"one key or the preference is lost when switching tabs"
+            )
+
+    def test_both_pages_agree_on_the_key(self):
+        assert self._keys("app.js") == self._keys("download.js"), (
+            "the two pages read and write different theme keys"
+        )
+
+    def test_the_key_is_read_on_load_and_written_on_toggle(self):
+        """Reading only on toggle would lose the preference across a restart."""
+        for script in ("app.js", "download.js"):
+            text = (ROOT / "clipper" / "static" / script).read_text(encoding="utf-8")
+            assert "getItem" in text, f"{script} never reads the saved theme"
+            assert "setItem" in text, f"{script} never saves the chosen theme"
+
+
 class TestTheHiddenAttributeActuallyHides:
     """`hidden` in the markup is not the same as hidden on screen.
 

@@ -9,7 +9,7 @@ Dibangun untuk penggunaan internal R&D Ridikc.
 
 [![version](https://img.shields.io/badge/version-2.2.1-61afef.svg?style=flat-square)](pyproject.toml)
 [![python](https://img.shields.io/badge/python-3.10%2B-61afef.svg?style=flat-square)](https://www.python.org)
-[![tests](https://img.shields.io/badge/tests-2063%20passed-3fb950.svg?style=flat-square)](#-testing)
+[![tests](https://img.shields.io/badge/tests-2070%20passed-3fb950.svg?style=flat-square)](#-testing)
 [![coverage](https://img.shields.io/badge/coverage-97%25-3fb950.svg?style=flat-square)](#-testing)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
@@ -24,6 +24,7 @@ Dibangun untuk penggunaan internal R&D Ridikc.
 | # | Bagian | Untuk siapa |
 | --- | --- | --- |
 | 1 | [✨ Fitur](#-fitur) | semua orang |
+| ↳ | [🖼️ Tampilan GUI](#-tampilan-gui-cuplikan-layar) | semua orang |
 | 2 | [🚀 Mulai dari sini](#-mulai-dari-sini-pengguna-baru) | pengguna baru |
 | 3 | [💻 CLI](#-cli-untuk-yang-terbiasa-dengan-terminal) | yang suka mengetik |
 | 4 | [👨‍💻 Detail teknis](#-detail-teknis-untuk-developer) | developer |
@@ -42,25 +43,82 @@ Dibangun untuk penggunaan internal R&D Ridikc.
 | --- | --- |
 | 🎬 **Clip otomatis** | Tempel URL, klik **Generate**, clip jadi. AI memilih momen terbaiknya sendiri. |
 | 📥 **Unduh apa saja** | Satu video, satu channel, atau video + thumbnail + metadata sekaligus. |
-| 🗂️ **Papan Video** | Satu tabel yang tahu status tiap video: sudah download, sudah clip, gagal, atau antri. |
+| 🗂️ **Papan Video** | Satu tabel yang tahu status tiap video: sudah download, sudah clip, gagal, atau antri. Bisa dicari dan difilter per status. |
+| 🖼️ **Cek Info dulu** | Tempel URL lalu klik **Cek Info** — thumbnail, judul, dan durasi tampil sebelum job dijalankan. |
 | 📊 **Progres live** | Persentase, phase, dan log stdout pipeline tampil langsung di halaman. |
-| 🛑 **Bisa dibatalkan** | Tombol **Cancel** menghentikan proses di antara video, tanpa merusak yang sedang berjalan. |
+| 🛑 **Bisa dibatalkan** | Tombol **Batalkan** menghentikan proses di antara video, tanpa merusak yang sedang berjalan. |
 | 🎨 **7 gaya caption** | Clean White, Viral Yellow/Red/Green, Neon Cyan/Pink, Bold Black BG. |
-| 📋 **Riwayat** | Semua clip dan semua harvest channel tersimpan dan bisa dicari lagi. |
+| 📋 **Riwayat** | Semua clip dan semua harvest channel tersimpan, lengkap dengan tombol **Segarkan**. |
+| 🌗 **Tema gelap / terang** | Tombol 🌗 di bar atas; pilihanmu diingat browser untuk kunjungan berikutnya. |
 
-### Tampilan
+### Tampilan GUI (cuplikan layar)
 
-Satu aplikasi, dua halaman dalam satu jendela browser.
+Satu proses Flask, satu jendela browser, dua halaman yang berpindah lewat tab di
+bar atas — server tidak pernah restart saat pindah halaman. Dua halaman itu
+berbagi kerangka yang sama:
 
-**Halaman Clipper (`/`)** — tempel URL, cek info, atur jumlah clip dan gaya
-caption, lalu klik **Generate Clip**.
+| Bagian bar atas | Fungsi |
+| --- | --- |
+| Logo **RCH** + nama produk | Brand; kalimat subjudul menyesuaikan halaman aktif |
+| Tab **Clipper** / **Downloader** | Pindah halaman, tab aktif ditandai |
+| Tombol **🌗** | Ganti tema gelap ↔ terang; pilihan disimpan di `localStorage` browser |
+| Tombol **Keluar** | Mematikan server lokal dari GUI (POST `/api/quit`) |
 
-![Halaman Clipper: form URL, pengaturan clip, tombol Generate, panel progres, dan tabel riwayat](docs/images/gui-clipper.png)
+#### Halaman Clipper (`/`)
 
-**Halaman Downloader (`/download`)** — tempel URL video atau channel, pilih
-format dan kualitas, lalu unduh video, channel, atau metadata lengkapnya.
+![Halaman Clipper: panel Sumber berisi kolom URL dan tombol Cek Info, panel Pengaturan Clip berisi Jumlah Clip 3, Durasi Min 20, Durasi Maks 60, Gaya Caption Clean White, tombol Generate Clip dan baris Output, panel Progres kosong 0% dengan phase Siap dan kotak log, tabel Riwayat kosong, dan di bawahnya mulai terlihat panel Papan Video](docs/images/gui-clipper.png)
 
-![Halaman Downloader: form URL, pilihan format dan kualitas, tombol Cek Info, Unduh Video, Info Channel, Channel Lengkap, dan tabel status video](docs/images/gui-downloader.png)
+Empat panel. Tiga pertama muat penuh di jendela 1280×900; **Papan Video** ada di
+bawahnya, jadi layar kecil perlu digulir sedikit:
+
+| Panel | Isi |
+| --- | --- |
+| **Sumber** | Kolom **URL Video YouTube** + tombol **Cek Info**. Setelah dicek, thumbnail, judul, durasi, dan tanggal upload muncul tepat di bawahnya. |
+| **Pengaturan Clip** | **Jumlah Clip** (1–20), **Durasi Min** / **Durasi Maks** (5–600 detik), **Gaya Caption**, tombol utama **Generate Clip**, lalu baris **Output** yang menunjukkan folder tujuan clip. |
+| **Progres** | Bar persentase, phase (`Siap.` → nama tahap yang sedang jalan), log stdout pipeline, dan daftar **Clip dihasilkan** yang bisa diklik untuk mengunduh file clip. |
+| **Riwayat** | Tabel clip sebelumnya: Waktu, Gaya, Clip, Rentang, Status, Judul, Video — dengan tombol **Segarkan**. |
+
+Di bawahnya ada **Papan Video**: chip jumlah video per status, kotak **Cari
+judul atau ID…**, dropdown **Semua status**, dan tabel (Status, Judul, Video ID,
+Download, Clip, Aksi). Kolom Aksi berisi **Isi URL** (memasukkan video itu ke
+kolom URL Clipper — job tetap jalan setelah kamu klik **Generate Clip**) plus
+**Antrekan Clip**, atau **Batalkan antre** kalau statusnya sudah `queued`.
+Statusnya diambil dari ledger bersama `video-tracker.jsonl`.
+
+> ⏱️ **Selagi job berjalan**, tombol **Generate Clip** dan **Cek Info** berubah
+> jadi nonaktif dan tombol **Batalkan** muncul di bawahnya. Bar progres, log,
+> dan clip yang sudah jadi tetap terlihat sampai job selesai atau dibatalkan.
+
+#### Halaman Downloader (`/download`)
+
+![Halaman Downloader: panel Input berisi URL video/channel yang sudah diisi, Format MP4 dan Kualitas 720p, Ukuran Thumbnail hqdefault dan Folder Output, checkbox Sertakan Shorts dan Batasi jumlah, enam tombol Cek Info, Info Playlist, Unduh Video, Info Channel, Video Channel, dan Channel Lengkap; panel Progress kosong 0% dengan phase Siap; tabel Status Video kosong "Belum ada job."; dan tabel Riwayat harvest channel](docs/images/gui-downloader.png)
+
+Berbeda dari Clipper, Downloader punya satu panel input dengan banyak pilihan
+karena satu form dipakai untuk beberapa operasi:
+
+| Panel | Isi |
+| --- | --- |
+| **Input** | URL video/channel, **Format** (MP4 / MP3), **Kualitas** (360p, 480p, 720p, 1080p, **Terbaik**), **Ukuran Thumbnail**, **Folder Output**, checkbox **Sertakan Shorts** dan **Batasi jumlah** + kolom jumlahnya. |
+| **Progress** | Bar yang sama seperti Clipper: persentase, phase, log. |
+| **Status Video** | Status per file dari job yang jalan atau baru saja selesai, beserta kolom **Error** dan ringkasan jumlah di kanan judul panel. |
+| **Riwayat** | Riwayat harvest channel: Waktu, Perintah, Channel, Total, Sukses, Gagal, Status Clip — dengan tombol **Segarkan**. |
+
+Enam tombol di panel **Input**:
+
+| Tombol | Hasil |
+| --- | --- |
+| **Cek Info** | Metadata + thumbnail satu video |
+| **Info Playlist** | Daftar video di playlist |
+| **Unduh Video** | Unduh satu video sesuai format & kualitas pilihan |
+| **Info Channel** | Info channel saja, tanpa mengunduh video |
+| **Video Channel** | Video-video dari channel |
+| **Channel Lengkap** | Video + thumbnail + metadata jadi satu ZIP (tombol utama, warna accent) |
+
+> 📸 **Screenshot ini bukan mock.** Keduanya diambil dari app yang benar-benar
+> jalan: `py -3 docs/screenshot.py` menyalakan server di port `8799`, lalu
+> memotret `/` dan `/download` dengan Playwright. Jalankan ulang skrip itu setiap
+> kali tampilan berubah. Path Edge di `docs/screenshot.py` masih hardcode mesin
+> ini — sesuaikan konstanta `EDGE` kalau capture gagal dijalankan.
 
 <details>
 <summary><b>🔍 Rincian teknis fitur (untuk developer)</b></summary>
@@ -207,7 +265,9 @@ rch channel-full https://www.youtube.com/@namachannel --resume
 
 Ukuran thumbnail (`SIZE`): `maxresdefault`, `hqdefault`, `mqdefault`,
 `sddefault`, `default`. Kualitas video (`--quality`): `360p`, `480p`, `720p`
-(default), `1080p`.
+(default), `1080p`, `best` — sama dengan nilai dropdown **Kualitas** di GUI.
+Angka lain tetap diterima: bagian digit-nya yang dipakai sebagai batas tinggi
+video, jadi `2160p` berarti unduh sampai 2160p.
 
 Semua hasil unduhan tersimpan di satu folder berbranded di dalam folder
 **Downloads** sistem:
@@ -260,8 +320,8 @@ dari `/api/status/<id>` yang sama.
 
 | Method | Path | Body / Query | Keterangan |
 | --- | --- | --- | --- |
-| GET | `/api/videos` | `?status=&q=&limit=` | Daftar video + status + jumlah per status |
-| POST | `/api/videos/queue` | `{videoId}` | Tandai antri clip |
+| GET | `/api/videos` | `?status=&q=&limit=` | Daftar video + status + jumlah per status (`limit` default 200, maksimum 500) |
+| POST | `/api/videos/queue` | `{videoId}` | Tandai antri clip — penanda saja, tidak memulai proses |
 | POST | `/api/videos/unqueue` | `{videoId}` | Batalkan tanda antri |
 
 #### Downloader
@@ -380,14 +440,24 @@ clipper/
 ├── services/               # pipeline: downloader, whisper, ai_selector,
 │                           #          caption_maker, face_tracker, video_processor
 ├── styles/caption_styles.py# 7 gaya caption
-├── templates/ static/      # frontend GUI
-├── utils/helpers.py        # klip acak, bersih-bersih file
-└── tests/                  # test pipeline berat (auto-skip bila deps kurang)
+├── templates/               # index.html (Clipper), download.html (Downloader)
+├── static/                  # app.js, download.js, style.css, download.css
+├── utils/helpers.py         # klip acak, bersih-bersih file
+└── tests/                   # test pipeline berat (auto-skip bila deps kurang)
 
 launchers/                  # vclip.sh / vclip.bat / rch-cli.bat / VCLIP.command
 tests/                      # test RCH, clipper web, launcher
 docs/                       # PENGGUNAAN, CLIPPER, CARA_KERJA, PANDUAN-TIM
+└── images/                 # gui-clipper.png, gui-downloader.png (dari screenshot.py)
 ```
+
+> 🖼️ Dua PNG di folder `docs/images` (`gui-clipper.png`, `gui-downloader.png`)
+> itu hasil **[`docs/screenshot.py`](docs/screenshot.py)** — alat sekali jalan,
+> bukan test: dia menyalakan server sungguhan lalu memotret dua halaman dengan
+> Playwright. Jalankan `py -3 docs/screenshot.py` setiap kali markup atau CSS
+> berubah, lalu commit ulang gambarnya. Itulah cara brand salah ketahuan: waktu
+> halaman Clipper masih menulis "YouTube Viral Clipper" padahal Downloader sudah
+> pakai nama baru, nama lamanya baru kelihatan dari screenshot.
 
 #### Instalasi manual
 
@@ -475,6 +545,7 @@ di CI.
 | [`docs/CLIPPER.md`](docs/CLIPPER.md) | Detail pipeline clip |
 | [`docs/CARA_KERJA.md`](docs/CARA_KERJA.md) | Cara kerja internal |
 | [`docs/PANDUAN-TIM.md`](docs/PANDUAN-TIM.md) | Panduan untuk tim |
+| [`docs/screenshot.py`](docs/screenshot.py) | Alat regenerate screenshot GUI di README |
 
 ---
 

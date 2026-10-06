@@ -236,7 +236,7 @@
       var root = document.documentElement;
       var next = root.dataset.theme === "dark" ? "light" : "dark";
       root.dataset.theme = next;
-      try { localStorage.setItem("rch-theme", next); } catch (e) { /* ignore */ }
+      try { localStorage.setItem("rvt-theme", next); } catch (e) { /* ignore */ }
     });
 
     $("#refreshHistory").addEventListener("click", loadHistory);
@@ -252,7 +252,7 @@
     });
 
     try {
-      var saved = localStorage.getItem("rch-theme");
+      var saved = localStorage.getItem("rvt-theme");
       if (saved) document.documentElement.dataset.theme = saved;
     } catch (e) { /* ignore */ }
 
